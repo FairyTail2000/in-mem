@@ -2,6 +2,7 @@ use std::io::Write;
 
 pub mod command;
 pub mod message;
+pub mod acl;
 
 pub fn init_env_logger() {
     env_logger::Builder::from_env(env_logger::Env::default())

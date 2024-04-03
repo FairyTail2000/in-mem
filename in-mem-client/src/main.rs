@@ -1,10 +1,11 @@
 use std::net::{IpAddr, SocketAddr};
 use clap::Parser;
-use bson::to_vec;
+use bson::{from_slice, to_vec};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use uuid::Uuid;
-use common::{command, message, init_env_logger};
+use common::{command, init_env_logger};
+use common::message::Message;
 
 
 #[derive(Parser, Debug)]
@@ -34,7 +35,7 @@ async fn main() {
     };
     log::info!("Connected to {}:{}", args.host, args.port);
     let mut buf = [0; 1024];
-    let heartbeat_message = message::Message::new_command(Uuid::new_v4(), command::Command::Heartbeat);
+    let heartbeat_message = Message::new_command(Uuid::new_v4(), command::Command::Heartbeat);
     let heartbeat_message = to_vec(&heartbeat_message).unwrap();
     loop {
         match socket.write_all(&*heartbeat_message).await {
@@ -64,11 +65,18 @@ async fn main() {
                 continue;
             }
         };
-        let cmd = message::Message::new_command(Uuid::new_v4(), cmd);
+        let cmd = Message::new_command(Uuid::new_v4(), cmd);
+        log::debug!("Sending command: {}", cmd);
         let cmd = to_vec(&cmd).unwrap();
         socket.write_all(&*cmd).await.unwrap();
-        let n = socket.read(&mut buf).await.unwrap();
-        let response = std::str::from_utf8(&buf[..n]).unwrap();
-        log::info!("Response: {}", response);
+        socket.read(&mut buf).await.unwrap();
+        let message: Message = match from_slice(&buf) {
+            Ok(msg) => msg,
+            Err(err) => {
+                log::error!("Error parsing Message: {}", err);
+                continue;
+            }
+        };
+        log::info!("Response: {}", message);
     }
 }

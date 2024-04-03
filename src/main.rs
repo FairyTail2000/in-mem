@@ -8,17 +8,23 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
 use bson::{from_slice, to_vec};
 use uuid::Uuid;
-use common::command::Command;
+use common::command::{ACLOperation, Command};
 use common::init_env_logger;
 use common::message::{Message, MessageContent, MessageResponse, OperationStatus};
 use store::Store;
-use crate::store::StoreAble;
+use crate::store::{ACLAble, StoreAble, UserAble};
+use brotli2::read::BrotliDecoder;
+use brotli2::write::BrotliEncoder;
+use brotli2::CompressParams;
+use std::io::prelude::{Read, Write};
+use sha2::{Digest, Sha512};
 
 
 struct Connection {
     socket: TcpStream,
     is_closed: bool,
     id: Uuid,
+    user: Option<String>,
 }
 
 impl Connection {
@@ -26,8 +32,39 @@ impl Connection {
         Self {
             socket,
             is_closed: false,
-            id
+            id,
+            user: None
         }
+    }
+
+    /// Abstracts the read operation on the socket, returning the read buffer to abstract the operation to add compression later
+    async fn read(&mut self) -> std::io::Result<Vec<u8>> {
+        let mut buf = vec![0; 1024];
+        return match self.socket.read(&mut buf).await {
+            Ok(read) => {
+                if read == 0 {
+                    return Err(std::io::Error::from(std::io::ErrorKind::ConnectionAborted));
+                }
+                buf.truncate(read);
+                let mut d = BrotliDecoder::new(&buf[..]);
+                let mut decompressed_buf = Vec::new();
+                d.read_to_end(&mut decompressed_buf)?;
+                Ok(decompressed_buf)
+            }
+            Err(err) => {
+                Err(err)
+            }
+        };
+    }
+
+    /// Abstracts the write operation on the socket, returning the read buffer to abstract the operation to add compression later
+    async fn write(&mut self, buf: &[u8]) -> std::io::Result<()> {
+        let mut params = CompressParams::new();
+        params.quality(6);
+        let mut e = BrotliEncoder::from_params(Vec::new(), &params);
+        e.write_all(buf)?;
+        let compressed_buf = e.finish()?;
+        return self.socket.write_all(&compressed_buf).await;
     }
 }
 
@@ -42,20 +79,15 @@ struct CLI {
     port: u16,
 }
 
-async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T) where T: StoreAble + Send + Sync {
+async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T) where T: StoreAble + ACLAble + UserAble + Send + Sync {
     loop {
         tokio::time::sleep(std::time::Duration::from_nanos(20)).await;
         let mut blocked = sockets.lock().await;
         for connection in blocked.iter_mut() {
-            let mut buf = [0; 1024];
-            let socket = &mut connection.socket;
             let rsp_id = Uuid::new_v4();
-            match socket.read(&mut buf).await {
-                Ok(0) => {
-                    log::info!("Connection closed");
-                    connection.is_closed = true;
-                }
-                Ok(_) => {
+            match connection.read().await {
+                Ok(buf) => {
+                    log::trace!("Read from socket: {}", connection.id);
                     let message: Message = match from_slice(&buf) {
                         Ok(msg) => msg,
                         Err(err) => {
@@ -67,76 +99,145 @@ async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T) wher
                                 in_reply_to: None,
                             });
                             let rsp = to_vec(&rsp).unwrap();
-                            socket.write_all(&*rsp).await.unwrap();
+                            connection.write(&*rsp).await.unwrap();
                             continue;
                         }
                     };
-                    log::debug!("Received message: {:?}", message);
                     match message.content {
                         MessageContent::Command(cmd) => {
+                            log::trace!("Received command: {:?}", cmd);
+                            if !store.acl_is_allowed(&connection.id.to_string(), cmd.to_id()) {
+                                log::trace!("Command is not allowed for user: {:?}", connection.user.clone().unwrap_or("Not Logged In".to_string()));
+                                let rsp = Message::new_response(rsp_id, MessageResponse {
+                                    content: None,
+                                    status: OperationStatus::NotAllowed,
+                                    in_reply_to: Some(message.id),
+                                });
+                                match to_vec(&rsp) {
+                                    Ok(rsp) => {
+                                        match connection.write(&*rsp).await {
+                                            Ok(_) => {}
+                                            Err(err) => {
+                                                log::error!("Error writing response: {}", err);
+                                                connection.is_closed = true;
+                                            }
+                                        }
+                                    },
+                                    Err(err) => {
+                                        log::error!("Error serializing response: {}", err);
+                                        connection.is_closed = true;
+                                    }
+                                }
+                                continue;
+                            }
+                            log::trace!("Command is allowed");
+                            
                             match cmd {
                                 Command::Get { key, default } => {
-                                    match store.get(&key) {
+                                    let rsp = match store.get(&key) {
                                         None => {
-                                            let rsp = Message::new_response(rsp_id, MessageResponse {
+                                            Message::new_response(rsp_id, MessageResponse {
                                                 content: default,
                                                 status: OperationStatus::Failure,
                                                 in_reply_to: Some(message.id),
-                                            });
-                                            let rsp = to_vec(&rsp).unwrap();
-                                            socket.write_all(&*rsp).await.unwrap();
+                                            }).to_vec().unwrap()
                                         }
                                         Some(val) => {
-                                            let rsp = Message::new_response(rsp_id, MessageResponse {
+                                            Message::new_response(rsp_id, MessageResponse {
                                                 content: Some(val.clone()),
                                                 status: OperationStatus::Success,
                                                 in_reply_to: Some(message.id),
-                                            });
-                                            let rsp = to_vec(&rsp).unwrap();
-                                            socket.write_all(&*rsp).await.unwrap();
+                                            }).to_vec().unwrap()
                                         }
-                                    }
+                                    };
+                                    connection.write(&*rsp).await.unwrap();
                                 }
                                 Command::Set { key, value } => {
-                                    store.set(key, value);
-                                    let rsp = Message::new_response(rsp_id, MessageResponse {
-                                        content: None,
-                                        status: OperationStatus::Success,
-                                        in_reply_to: Some(message.id),
-                                    });
-                                    let rsp = to_vec(&rsp).unwrap();
-                                    socket.write_all(&*rsp).await.unwrap();
+                                    let rsp = match store.set(key, value) {
+                                        Ok(_) => {
+                                            Message::new_response(rsp_id, MessageResponse {
+                                                content: None,
+                                                status: OperationStatus::Success,
+                                                in_reply_to: Some(message.id),
+                                            })
+                                        },
+                                        Err(err) => {
+                                            Message::new_response(rsp_id, MessageResponse {
+                                                content: Some(err.to_string()),
+                                                status: OperationStatus::Failure,
+                                                in_reply_to: Some(message.id),
+                                            })
+                                        }
+                                    }.to_vec().unwrap();
+                                    connection.write(&*rsp).await.unwrap();
                                 }
                                 Command::Heartbeat => {
                                     let rsp = Message::new_response(rsp_id, MessageResponse {
                                         content: None,
                                         status: OperationStatus::Success,
                                         in_reply_to: Some(message.id),
-                                    });
-                                    let rsp = to_vec(&rsp).unwrap();
-                                    socket.write_all(&*rsp).await.unwrap();
+                                    }).to_vec().unwrap();
+                                    connection.write(&*rsp).await.unwrap();
                                 }
                                 Command::Delete { key } => {
-                                    match store.remove(&key) {
+                                    let rsp = match store.remove(&key) {
                                         None => {
-                                            let rsp = Message::new_response(rsp_id, MessageResponse {
-                                                content: Some("Key not found".to_string()),
-                                                status: OperationStatus::Failure,
+                                            Message::new_response(rsp_id, MessageResponse {
+                                                content: None,
+                                                status: OperationStatus::NotFound,
                                                 in_reply_to: Some(message.id),
-                                            });
-                                            let rsp = to_vec(&rsp).unwrap();
-                                            socket.write_all(&*rsp).await.unwrap();
+                                            }).to_vec().unwrap()
                                         }
                                         Some(_) => {
-                                            let rsp = Message::new_response(rsp_id, MessageResponse {
+                                            Message::new_response(rsp_id, MessageResponse {
                                                 content: None,
                                                 status: OperationStatus::Success,
                                                 in_reply_to: Some(message.id),
-                                            });
-                                            let rsp = to_vec(&rsp).unwrap();
-                                            socket.write_all(&*rsp).await.unwrap();
+                                            }).to_vec().unwrap()
                                         }
                                     };
+                                    connection.write(&*rsp).await.unwrap();
+                                }
+                                Command::ACL { op } => {
+                                    match op {
+                                        ACLOperation::Set { user, command } => {
+                                            store.acl_add(&user, command);
+                                        }
+                                        ACLOperation::Remove { user, command } => {
+                                            store.acl_remove(&user, command);
+                                        }
+                                        ACLOperation::List { user } => {
+                                            let commands = store.acl_list(&user);
+                                            
+                                            let rsp = Message::new_response(rsp_id, MessageResponse {
+                                                content: Some(commands.iter().map(|cmd| cmd.to_string()).collect::<Vec<String>>().join(", ").to_string()),
+                                                status: OperationStatus::Success,
+                                                in_reply_to: Some(message.id),
+                                            }).to_vec().unwrap();
+                                            connection.write(&*rsp).await.unwrap();
+                                        }
+                                    }
+                                },
+                                Command::Login { user, password } => {
+                                    let mut hasher = Sha512::new();
+                                    hasher.update(&password);
+                                    let result = hasher.finalize();
+                                    let password = format!("{:x}", result);
+                                    let rsp = if store.user_is_valid(&user, &password) {
+                                        connection.user = Some(user.clone());
+                                        Message::new_response(rsp_id, MessageResponse {
+                                            content: None,
+                                            status: OperationStatus::Success,
+                                            in_reply_to: Some(message.id),
+                                        })
+                                    } else {
+                                        Message::new_response(rsp_id, MessageResponse {
+                                            content: None,
+                                            status: OperationStatus::Failure,
+                                            in_reply_to: Some(message.id),
+                                        })
+                                    }.to_vec().unwrap();
+                                    connection.write(&*rsp).await.unwrap();
                                 }
                             }
                         }

@@ -11,3 +11,5 @@ uuid = { version = "1.8.0", features = ["v4", "serde"] }
 env_logger = "0.11.3"
 log = "0.4.21"
 chrono = "0.4.37"
+bson = { version = "2.9.0" }
+
