@@ -23,6 +23,5 @@ sha2 = "0.10.8"
 lto = true
 strip = true
 
-# static linking, to avoid the need for libwebp to be installed on the final docker image
 [target.x86_64-unknown-linux-musl]
 linker = "rust-lld"
