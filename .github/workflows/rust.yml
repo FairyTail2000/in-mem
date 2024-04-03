@@ -26,7 +26,7 @@ jobs:
           # Run the post step to save the cache even if another step before fails
           save-always: true
       - name: vendor
-        run: RUN mkdir .cargo && cargo vendor --locked > .cargo/config
+        run: (mkdir .cargo || true) && cargo vendor --locked > .cargo/config
       - name: Cache
         uses: actions/cache@v4.0.2
         with:
