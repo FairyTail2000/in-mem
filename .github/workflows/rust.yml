@@ -14,6 +14,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - name: Install musl
+        run: apt update -y && apt install -y musl-tools
+      - name: install rust-musl
+        run: rustup target add x86_64-unknown-linux-musl
       - name: Cache Vendor
         uses: actions/cache@v4.0.2
         with:
@@ -37,4 +41,4 @@ jobs:
           # Run the post step to save the cache even if another step before fails
           save-always: true
       - name: Build
-        run: rustup target add x86_64-unknown-linux-musl && cargo build --target x86_64-unknown-linux-musl --release
+        run: cargo build --target x86_64-unknown-linux-musl --release
