@@ -15,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - name: Install musl
-        run: apt update -y && apt install -y musl-tools
+        run: sudo apt update -y && sudo apt install -y musl-tools
       - name: install rust-musl
         run: rustup target add x86_64-unknown-linux-musl
       - name: Cache Vendor
