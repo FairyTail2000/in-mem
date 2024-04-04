@@ -27,7 +27,7 @@ jobs:
             .cargo
             vendor
           # An explicit key for restoring and saving the cache
-          key: vendorcache
+          key: vendorcache-${{ hashFiles('Cargo.*') }}
           # Run the post step to save the cache even if another step before fails
           save-always: true
       - name: vendor
