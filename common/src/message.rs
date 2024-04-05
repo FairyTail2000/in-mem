@@ -4,9 +4,9 @@ use uuid::Uuid;
 use crate::command;
 use bson;
 
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct MessageResponse {
-    pub content: Option<String>,
+    pub content: Option<bson::Bson>,
     pub status: OperationStatus,
     pub in_reply_to: Option<Uuid>,
 }
@@ -19,13 +19,13 @@ pub enum OperationStatus {
     NotAllowed
 }
 
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum MessageContent {
     Command(command::Command),
     Response(MessageResponse),
 }
 
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Message {
     pub id: Uuid,
     pub content: MessageContent,

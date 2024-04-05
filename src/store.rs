@@ -1,4 +1,4 @@
-use std::collections::TryReserveError;
+use std::collections::{HashMap, TryReserveError};
 use common::acl::{ACL, CommandID};
 
 pub trait StoreAble {
@@ -20,12 +20,28 @@ pub trait UserAble {
     fn user_is_valid(&self, user: &str, password: &str) -> bool;
 }
 
+// Now I understand why redis used h in front of all the hashmap commands. It's to avoid name conflicts.
+pub trait HashMapAble<T> {
+    fn hadd(&mut self, map_key: String, key: String, value: T) -> Result<(), TryReserveError>;
+    fn hremove(&mut self, map_key: String, key: String) -> bool;
+    fn hcontains(&self, map_key: String, key: String) -> bool;
+    fn hget(&self, map_key: String, key: String) -> Option<&T>;
+    fn hget_all(&self, map_key: String) -> Result<HashMap<String, T>, TryReserveError>;
+    fn hget_all_values(&self, map_key: String) -> Result<Vec<T>, TryReserveError>;
+    fn hkeys(&self, map_key: String) -> Result<Vec<String>, TryReserveError>;
+    fn hlen(&self, map_key: String) -> usize;
+    fn hupsert(&mut self, map_key: String, key: String, value: T) -> Result<(), TryReserveError>;
+    fn hstr_len(&self, map_key: String, key: String) -> Option<usize>;
+    fn hincrby(&mut self, map_key: String, key: String, value: i64) -> Result<i64, TryReserveError>;
+}
+
 #[derive(Default, Debug)]
 pub struct Store {
-    map: std::collections::HashMap<String, String>,
+    map: HashMap<String, String>,
     acl: ACL,
     /// UUID -> hashed password
-    users: std::collections::HashMap<String, String>,
+    users: HashMap<String, String>,
+    hash_maps: HashMap<String, HashMap<String, String>>,
 }
 
 impl StoreAble for Store {
@@ -93,5 +109,130 @@ impl UserAble for Store {
             },
             None => false
         }
+    }
+}
+
+impl HashMapAble<String> for Store {
+    fn hadd(&mut self, map_key: String, key: String, value: String) -> Result<(), TryReserveError> {
+        self.hash_maps.try_reserve(1)?;
+        let map = self.hash_maps.entry(map_key).or_insert(HashMap::new());
+        map.try_reserve(1)?;
+        map.insert(key, value);
+        Ok(())
+    }
+
+    fn hremove(&mut self, map_key: String, key: String) -> bool {
+        match self.hash_maps.get_mut(&map_key) {
+            Some(map) => {
+                map.remove(&key);
+                true
+            },
+            None => false
+        }
+    }
+
+    fn hcontains(&self, map_key: String, key: String) -> bool {
+        match self.hash_maps.get(&map_key) {
+            Some(map) => {
+                map.contains_key(&key)
+            },
+            None => false
+        }
+    }
+
+    fn hget(&self, map_key: String, key: String) -> Option<&String> {
+        match self.hash_maps.get(&map_key) {
+            Some(map) => {
+                map.get(&key)
+            },
+            None => None
+        }
+    }
+
+    fn hget_all(&self, map_key: String) -> Result<HashMap<String, String>, TryReserveError> {
+        match self.hash_maps.get(&map_key) {
+            Some(map) => {
+                let mut new_map = HashMap::new();
+                new_map.try_reserve(map.len())?;
+                for (k, v) in map.iter() {
+                    new_map.insert(k.clone(), v.clone());
+                }
+                Ok(new_map)
+            },
+            None => Ok(HashMap::new())
+        }
+    }
+
+    fn hget_all_values(&self, map_key: String) -> Result<Vec<String>, TryReserveError> {
+        match self.hash_maps.get(&map_key) {
+            Some(map) => {
+                let mut values = Vec::new();
+                values.try_reserve_exact(map.len())?;
+                for v in map.values() {
+                    values.push(v.clone());
+                }
+                Ok(values)
+            },
+            None => Ok(Vec::new())
+        }
+    }
+
+    fn hkeys(&self, map_key: String) -> Result<Vec<String>, TryReserveError> {
+        match self.hash_maps.get(&map_key) {
+            Some(map) => {
+                let mut keys = Vec::new();
+                keys.try_reserve_exact(map.len())?;
+                for k in map.keys() {
+                    keys.push(k.clone());
+                }
+                Ok(keys)
+            },
+            None => Ok(Vec::new())
+        }
+    }
+
+    fn hlen(&self, map_key: String) -> usize {
+        match self.hash_maps.get(&map_key) {
+            Some(map) => map.len(),
+            None => 0
+        }
+    }
+
+    fn hupsert(&mut self, map_key: String, key: String, value: String) -> Result<(), TryReserveError> {
+        self.hash_maps.try_reserve(1)?;
+        let map = self.hash_maps.entry(map_key).or_insert(HashMap::new());
+        map.try_reserve(1)?;
+        map.insert(key, value);
+        Ok(())
+    }
+
+    fn hstr_len(&self, map_key: String, key: String) -> Option<usize> {
+        match self.hash_maps.get(&map_key) {
+            Some(map) => {
+                match map.get(&key) {
+                    Some(v) => Some(v.len()),
+                    None => None
+                }
+            },
+            None => None
+        }
+    }
+
+    fn hincrby(&mut self, map_key: String, key: String, value: i64) -> Result<i64, TryReserveError> {
+        self.hash_maps.try_reserve(1)?;
+        let map = self.hash_maps.entry(map_key).or_insert(HashMap::new());
+        map.try_reserve(1)?;
+        let new_value = match map.get(&key) {
+            Some(v) => {
+                let new_value = v.parse::<i64>().unwrap() + value;
+                map.insert(key, new_value.to_string());
+                new_value
+            },
+            None => {
+                map.insert(key.clone(), value.to_string());
+                value
+            }
+        };
+        Ok(new_value)
     }
 }

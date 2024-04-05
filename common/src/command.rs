@@ -17,7 +17,7 @@ pub enum ACLOperation {
     },
 }
 
-#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Command {
     Get {
         key: String,
@@ -38,6 +38,44 @@ pub enum Command {
         user: String,
         password: String,
     },
+    HGET {
+        key: String,
+        field: String,
+    },
+    HSET {
+        key: String,
+        value: std::collections::HashMap<String, String>,
+    },
+    HDEL {
+        key: String,
+        field: String,
+    },
+    HGETALL {
+        key: String,
+    },
+    HKEYS {
+        key: String,
+    },
+    HVALS {
+        key: String,
+    },
+    HLEN {
+        key: String,
+    },
+    HEXISTS {
+        key: String,
+        field: String,
+    },
+    HINCRBY {
+        key: String,
+        field: String,
+        value: i64,
+    },
+    HSTRLEN {
+        key: String,
+        field: String,
+    },
+
 }
 
 const BUFFER_SIZE: usize = 1024;
@@ -133,6 +171,118 @@ impl TryFrom<[u8; BUFFER_SIZE]> for Command {
                 };
                 Ok(Command::Login { user, password })
             },
+            "HGET" => {
+                let key = match parts.next() {
+                    None => return Err("Key not provided".to_string()),
+                    Some(key) => key.to_string()
+                };
+                let field = match parts.next() {
+                    None => return Err("Field not provided".to_string()),
+                    Some(field) => field.to_string()
+                };
+                Ok(Command::HGET { key, field })
+            },
+            "HSET" => {
+                let key = match parts.next() {
+                    None => return Err("Key not provided".to_string()),
+                    Some(key) => key.to_string()
+                };
+                let mut value = std::collections::HashMap::new();
+                for part in parts {
+                    let mut kv = part.splitn(2, '=');
+                    let k = match kv.next() {
+                        None => return Err("Invalid key-value pair".to_string()),
+                        Some(k) => k.to_string()
+                    };
+                    let v = match kv.next() {
+                        None => return Err("Invalid key-value pair".to_string()),
+                        Some(v) => v.to_string()
+                    };
+                    value.insert(k, v);
+                }
+                Ok(Command::HSET { key, value })
+            },
+            "HDEL" => {
+                let key = match parts.next() {
+                    None => return Err("Key not provided".to_string()),
+                    Some(key) => key.to_string()
+                };
+                let field = match parts.next() {
+                    None => return Err("Field not provided".to_string()),
+                    Some(field) => field.to_string()
+                };
+                Ok(Command::HDEL { key, field })
+            },
+            "HGETALL" => {
+                let key = match parts.next() {
+                    None => return Err("Key not provided".to_string()),
+                    Some(key) => key.to_string()
+                };
+                Ok(Command::HGETALL { key })
+            },
+            "HKEYS" => {
+                let key = match parts.next() {
+                    None => return Err("Key not provided".to_string()),
+                    Some(key) => key.to_string()
+                };
+                Ok(Command::HKEYS { key })
+            },
+            "HVALS" => {
+                let key = match parts.next() {
+                    None => return Err("Key not provided".to_string()),
+                    Some(key) => key.to_string()
+                };
+                Ok(Command::HVALS { key })
+            },
+            "HLEN" => {
+                let key = match parts.next() {
+                    None => return Err("Key not provided".to_string()),
+                    Some(key) => key.to_string()
+                };
+                Ok(Command::HLEN { key })
+            },
+            "HEXISTS" => {
+                let key = match parts.next() {
+                    None => return Err("Key not provided".to_string()),
+                    Some(key) => key.to_string()
+                };
+                let field = match parts.next() {
+                    None => return Err("Field not provided".to_string()),
+                    Some(field) => field.to_string()
+                };
+                Ok(Command::HEXISTS { key, field })
+            },
+            "HINCRBY" => {
+                let key = match parts.next() {
+                    None => return Err("Key not provided".to_string()),
+                    Some(key) => key.to_string()
+                };
+                let field = match parts.next() {
+                    None => return Err("Field not provided".to_string()),
+                    Some(field) => field.to_string()
+                };
+                let value = match parts.next() {
+                    None => return Err("Value not provided".to_string()),
+                    Some(value) => {
+                        match value.parse() {
+                            Ok(value) => value,
+                            Err(_) => return Err("Invalid value".to_string())
+                        }
+                    }
+                };
+                Ok(Command::HINCRBY { key, field, value })
+            },
+            "HSTRLEN" => {
+                let key = match parts.next() {
+                    None => return Err("Key not provided".to_string()),
+                    Some(key) => key.to_string()
+                };
+                let field = match parts.next() {
+                    None => return Err("Field not provided".to_string()),
+                    Some(field) => field.to_string()
+                };
+                Ok(Command::HSTRLEN { key, field })
+            },
             _ => Err(format!("Invalid command: {}", part)),
         }
     }
@@ -158,6 +308,16 @@ impl Command {
             Command::Heartbeat => 3,
             Command::ACL { .. } => 4,
             Command::Login { .. } => 5,
+            Command::HGET { .. } => 6,
+            Command::HSET { .. } => 7,
+            Command::HDEL { .. } => 8,
+            Command::HGETALL { .. } => 9,
+            Command::HKEYS { .. } => 10,
+            Command::HVALS { .. } => 11,
+            Command::HLEN { .. } => 12,
+            Command::HEXISTS { .. } => 13,
+            Command::HINCRBY { .. } => 14,
+            Command::HSTRLEN { .. } => 15,
         }
     }
 }

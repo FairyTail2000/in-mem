@@ -1,18 +1,19 @@
 mod store;
 
+use std::collections::{HashMap, TryReserveError};
 use clap::Parser;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
-use bson::{from_slice, to_vec};
+use bson::{Bson, Document, from_slice, to_vec};
 use uuid::Uuid;
 use common::command::{ACLOperation, Command};
 use common::init_env_logger;
 use common::message::{Message, MessageContent, MessageResponse, OperationStatus};
 use store::Store;
-use crate::store::{ACLAble, StoreAble, UserAble};
+use crate::store::{ACLAble, HashMapAble, StoreAble, UserAble};
 use brotli2::read::BrotliDecoder;
 use brotli2::write::BrotliEncoder;
 use brotli2::CompressParams;
@@ -79,7 +80,7 @@ struct CLI {
     port: u16,
 }
 
-async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T) where T: StoreAble + ACLAble + UserAble + Send + Sync {
+async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T) where T: StoreAble + ACLAble + UserAble + Send + Sync + HashMapAble<String> {
     loop {
         tokio::time::sleep(std::time::Duration::from_nanos(20)).await;
         let mut blocked = sockets.lock().await;
@@ -94,7 +95,7 @@ async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T) wher
                             log::error!("Error parsing Message: {}", err);
                             connection.is_closed = true;
                             let rsp = Message::new_response(rsp_id, MessageResponse {
-                                content: Some(err.to_string()),
+                                content: Some(Bson::String(err.to_string())),
                                 status: OperationStatus::Failure,
                                 in_reply_to: None,
                             });
@@ -137,21 +138,21 @@ async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T) wher
                                     let rsp = match store.get(&key) {
                                         None => {
                                             Message::new_response(rsp_id, MessageResponse {
-                                                content: default,
+                                                content: default.map(|x| Bson::String(x.to_string())),
                                                 status: OperationStatus::Failure,
                                                 in_reply_to: Some(message.id),
                                             }).to_vec().unwrap()
                                         }
                                         Some(val) => {
                                             Message::new_response(rsp_id, MessageResponse {
-                                                content: Some(val.clone()),
+                                                content: Some(Bson::String(val.to_string())),
                                                 status: OperationStatus::Success,
                                                 in_reply_to: Some(message.id),
                                             }).to_vec().unwrap()
                                         }
                                     };
                                     connection.write(&*rsp).await.unwrap();
-                                }
+                                },
                                 Command::Set { key, value } => {
                                     let rsp = match store.set(key, value) {
                                         Ok(_) => {
@@ -163,14 +164,14 @@ async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T) wher
                                         },
                                         Err(err) => {
                                             Message::new_response(rsp_id, MessageResponse {
-                                                content: Some(err.to_string()),
+                                                content: Some(Bson::String(err.to_string())),
                                                 status: OperationStatus::Failure,
                                                 in_reply_to: Some(message.id),
                                             })
                                         }
                                     }.to_vec().unwrap();
                                     connection.write(&*rsp).await.unwrap();
-                                }
+                                },
                                 Command::Heartbeat => {
                                     let rsp = Message::new_response(rsp_id, MessageResponse {
                                         content: None,
@@ -178,7 +179,7 @@ async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T) wher
                                         in_reply_to: Some(message.id),
                                     }).to_vec().unwrap();
                                     connection.write(&*rsp).await.unwrap();
-                                }
+                                },
                                 Command::Delete { key } => {
                                     let rsp = match store.remove(&key) {
                                         None => {
@@ -197,7 +198,7 @@ async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T) wher
                                         }
                                     };
                                     connection.write(&*rsp).await.unwrap();
-                                }
+                                },
                                 Command::ACL { op } => {
                                     match op {
                                         ACLOperation::Set { user, command } => {
@@ -208,9 +209,9 @@ async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T) wher
                                         }
                                         ACLOperation::List { user } => {
                                             let commands = store.acl_list(&user);
-                                            
+                                            let res = commands.iter().map(|cmd| cmd.to_string()).collect::<Vec<String>>().join(", ").to_string();
                                             let rsp = Message::new_response(rsp_id, MessageResponse {
-                                                content: Some(commands.iter().map(|cmd| cmd.to_string()).collect::<Vec<String>>().join(", ").to_string()),
+                                                content: Some(Bson::String(res)),
                                                 status: OperationStatus::Success,
                                                 in_reply_to: Some(message.id),
                                             }).to_vec().unwrap();
@@ -238,7 +239,194 @@ async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T) wher
                                         })
                                     }.to_vec().unwrap();
                                     connection.write(&*rsp).await.unwrap();
-                                }
+                                },
+                                Command::HDEL { key, field } => {
+                                    let rsp = match store.hremove(key, field) {
+                                        true => {
+                                            Message::new_response(rsp_id, MessageResponse {
+                                                content: None,
+                                                status: OperationStatus::Success,
+                                                in_reply_to: Some(message.id),
+                                            }).to_vec().unwrap()
+                                        }
+                                        false => {
+                                            Message::new_response(rsp_id, MessageResponse {
+                                                content: None,
+                                                status: OperationStatus::NotFound,
+                                                in_reply_to: Some(message.id),
+                                            }).to_vec().unwrap()
+                                        }
+                                    };
+                                    connection.write(&*rsp).await.unwrap();
+                                },
+                                Command::HGET { key, field } => {
+                                    let rsp = match store.hget(key, field) {
+                                        None => {
+                                            Message::new_response(rsp_id, MessageResponse {
+                                                content: None,
+                                                status: OperationStatus::NotFound,
+                                                in_reply_to: Some(message.id),
+                                            }).to_vec().unwrap()
+                                        }
+                                        Some(val) => {
+                                            Message::new_response(rsp_id, MessageResponse {
+                                                content: Some(Bson::String(val.clone())),
+                                                status: OperationStatus::Success,
+                                                in_reply_to: Some(message.id),
+                                            }).to_vec().unwrap()
+                                        }
+                                    };
+                                    connection.write(&*rsp).await.unwrap();
+                                },
+                                // Some might fail to insert. But it's not reported which failed ;)
+                                Command::HSET { key, value } => {
+                                    let mut okay = Vec::new();
+                                    match okay.try_reserve_exact(value.len()) {
+                                        Ok(_) => {}
+                                        Err(err) => {
+                                            log::error!("Error reserving space for values: {}", err);
+                                            let rsp = Message::new_response(rsp_id, MessageResponse {
+                                                content: None,
+                                                status: OperationStatus::Failure,
+                                                in_reply_to: Some(message.id),
+                                            }).to_vec().unwrap();
+                                            connection.write(&*rsp).await.unwrap();
+                                        }
+                                    }
+                                    for kv in value.into_iter() {
+                                        let ok = store.hadd(key.clone(), kv.0, kv.1).is_ok();
+                                        okay.push(ok);
+                                    }
+                                    let okay = okay.iter().all(|x| *x);
+                                    let rsp = if okay {
+                                        Message::new_response(rsp_id, MessageResponse {
+                                            content: None,
+                                            status: OperationStatus::Success,
+                                            in_reply_to: Some(message.id),
+                                        })
+                                    } else {
+                                        Message::new_response(rsp_id, MessageResponse {
+                                            content: None,
+                                            status: OperationStatus::Failure,
+                                            in_reply_to: Some(message.id),
+                                        })
+                                    }.to_vec().unwrap();
+                                    connection.write(&*rsp).await.unwrap();
+                                },
+                                Command::HGETALL { key } => {
+                                    let rsp = match store.hget_all(key) {
+                                        Ok(map) => {
+                                            let map = map.into_iter().map(|(k, v)| (k, Bson::String(v))).collect::<Document>();
+                                            Message::new_response(rsp_id, MessageResponse {
+                                                content: Some(Bson::Document(map)),
+                                                status: OperationStatus::Success,
+                                                in_reply_to: Some(message.id),
+                                            }).to_vec().unwrap()
+                                        }
+                                        Err(err) => {
+                                            Message::new_response(rsp_id, MessageResponse {
+                                                content: Some(Bson::String(err.to_string())),
+                                                status: OperationStatus::Failure,
+                                                in_reply_to: Some(message.id),
+                                            }).to_vec().unwrap()
+                                        }
+                                    };
+                                    connection.write(&*rsp).await.unwrap();
+                                },
+                                Command::HKEYS { key } => {
+                                    let rsp = match store.hkeys(key) {
+                                        Ok(keys) => {
+                                            let keys = keys.into_iter().map(|k| Bson::String(k)).collect::<Vec<Bson>>();
+                                            Message::new_response(rsp_id, MessageResponse {
+                                                content: Some(Bson::Array(keys)),
+                                                status: OperationStatus::Success,
+                                                in_reply_to: Some(message.id),
+                                            }).to_vec().unwrap()
+                                        }
+                                        Err(err) => {
+                                            Message::new_response(rsp_id, MessageResponse {
+                                                content: Some(Bson::String(err.to_string())),
+                                                status: OperationStatus::Failure,
+                                                in_reply_to: Some(message.id),
+                                            }).to_vec().unwrap()
+                                        }
+                                    };
+                                    connection.write(&*rsp).await.unwrap();
+                                },
+                                Command::HLEN { key } => {
+                                    let rsp = Message::new_response(rsp_id, MessageResponse {
+                                        content: Some(Bson::Int64(store.hlen(key) as i64)),
+                                        status: OperationStatus::Success,
+                                        in_reply_to: Some(message.id),
+                                    }).to_vec().unwrap();
+                                    connection.write(&*rsp).await.unwrap();
+                                },
+                                Command::HVALS { key } => {
+                                    let rsp = match store.hget_all_values(key) {
+                                        Ok(values) => {
+                                            let values = values.into_iter().map(|v| Bson::String(v)).collect::<Vec<Bson>>();
+                                            Message::new_response(rsp_id, MessageResponse {
+                                                content: Some(Bson::Array(values)),
+                                                status: OperationStatus::Success,
+                                                in_reply_to: Some(message.id),
+                                            }).to_vec().unwrap()
+                                        }
+                                        Err(err) => {
+                                            Message::new_response(rsp_id, MessageResponse {
+                                                content: Some(Bson::String(err.to_string())),
+                                                status: OperationStatus::Failure,
+                                                in_reply_to: Some(message.id),
+                                            }).to_vec().unwrap()
+                                        }
+                                    };
+                                    connection.write(&*rsp).await.unwrap();
+                                },
+                                Command::HEXISTS { key, field } => {
+                                    let rsp = Message::new_response(rsp_id, MessageResponse {
+                                        content: Some(Bson::Boolean(store.hcontains(key, field))),
+                                        status: OperationStatus::Success,
+                                        in_reply_to: Some(message.id),
+                                    }).to_vec().unwrap();
+                                    connection.write(&*rsp).await.unwrap();
+                                },
+                                Command::HINCRBY { key, field, value } => {
+                                    let rsp = match store.hincrby(key, field, value) {
+                                        Ok(val) => {
+                                            Message::new_response(rsp_id, MessageResponse {
+                                                content: Some(Bson::Int64(val)),
+                                                status: OperationStatus::Success,
+                                                in_reply_to: Some(message.id),
+                                            }).to_vec().unwrap()
+                                        }
+                                        Err(err) => {
+                                            Message::new_response(rsp_id, MessageResponse {
+                                                content: Some(Bson::String(err.to_string())),
+                                                status: OperationStatus::Failure,
+                                                in_reply_to: Some(message.id),
+                                            }).to_vec().unwrap()
+                                        }
+                                    };
+                                    connection.write(&*rsp).await.unwrap();
+                                },
+                                Command::HSTRLEN { key, field } => {
+                                    let rsp = match store.hstr_len(key, field) {
+                                        Some(len) => {
+                                            Message::new_response(rsp_id, MessageResponse {
+                                                content: Some(Bson::Int64(len as i64)),
+                                                status: OperationStatus::Success,
+                                                in_reply_to: Some(message.id),
+                                            }).to_vec().unwrap()
+                                        }
+                                        None => {
+                                            Message::new_response(rsp_id, MessageResponse {
+                                                content: None,
+                                                status: OperationStatus::NotFound,
+                                                in_reply_to: Some(message.id),
+                                            }).to_vec().unwrap()
+                                        }
+                                    };
+                                    connection.write(&*rsp).await.unwrap();
+                                },
                             }
                         }
                         MessageContent::Response(_) => {
