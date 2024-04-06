@@ -18,6 +18,7 @@ uuid = "1.8.0"
 common = { path = "common" }
 brotli2 = "0.3.2"
 sha2 = "0.10.8"
+age = { version = "0.10.0" }
 
 [profile.release]
 lto = true

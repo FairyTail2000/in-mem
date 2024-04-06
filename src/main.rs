@@ -1,6 +1,5 @@
 mod store;
 
-use std::collections::{HashMap, TryReserveError};
 use clap::Parser;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
@@ -18,6 +17,10 @@ use brotli2::read::BrotliDecoder;
 use brotli2::write::BrotliEncoder;
 use brotli2::CompressParams;
 use std::io::prelude::{Read, Write};
+use std::str::FromStr;
+use age::Decryptor;
+use age::secrecy::ExposeSecret;
+use age::x25519::{Identity, Recipient};
 use sha2::{Digest, Sha512};
 
 
@@ -26,6 +29,7 @@ struct Connection {
     is_closed: bool,
     id: Uuid,
     user: Option<String>,
+    pub_key: Option<Recipient>,
 }
 
 impl Connection {
@@ -34,12 +38,70 @@ impl Connection {
             socket,
             is_closed: false,
             id,
-            user: None
+            user: None,
+            pub_key: None,
         }
     }
 
+    /// Decrypts the buffer with the private key of the server, if the public key is not present it will return the buffer as is
+    fn decrypt(&self, buf: &[u8], key: &Identity) -> std::io::Result<Option<Vec<u8>>> {
+        if self.pub_key.is_some() {
+            let dec = match Decryptor::new(&buf[..]) {
+                Ok(dec) => {
+                    match dec {
+                        Decryptor::Recipients(d) => {d},
+                        Decryptor::Passphrase(_) => {
+                            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Received passphrase encrypted message, expected public key encrypted message"));
+                        }
+                    }
+                },
+                Err(err) => {
+                    let formatted = format!("Error creating decryptor: {}", err);
+                    log::error!("{}", formatted);
+                    return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, formatted));
+                }
+            };
+            let mut reader = match dec.decrypt(vec![key as &dyn age::Identity].into_iter()) {
+                Ok(reader) => reader,
+                Err(err) => {
+                    let formatted = format!("Error decrypting message: {}", err);
+                    log::error!("{}", formatted);
+                    return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, formatted));
+                }
+            };
+            let mut decrypted = Vec::new();
+            match reader.read_to_end(&mut decrypted) {
+                Ok(_) => {}
+                Err(err) => {
+                    let formatted = format!("Error reading decrypted message: {}", err);
+                    log::error!("{}", formatted);
+                    return Err(std::io::Error::new(std::io::ErrorKind::Other, formatted));
+                }
+            }
+            return Ok(Some(decrypted));
+        }
+        return Ok(None);
+    }
+
+    /// Encrypts the buffer with the public key of the recipient, if the public key is not present it will return the buffer as is
+    fn encrypt(&self, buf: &[u8]) -> std::io::Result<Vec<u8>> {
+        return match self.pub_key.as_ref() {
+            Some(key) => {
+                let mut encrypted = Vec::new();
+                let e = age::Encryptor::with_recipients(vec![Box::new(key.clone())]).unwrap();
+                let mut writer = e.wrap_output(&mut encrypted).unwrap();
+                writer.write_all(buf)?;
+                writer.finish()?;
+                Ok(encrypted)
+            }
+            None => {
+                Ok(buf.to_vec())
+            }
+        };
+    }
+
     /// Abstracts the read operation on the socket, returning the read buffer to abstract the operation to add compression later
-    async fn read(&mut self) -> std::io::Result<Vec<u8>> {
+    async fn read(&mut self, key: &Identity) -> std::io::Result<(Vec<u8>, bool)> {
         let mut buf = vec![0; 1024];
         return match self.socket.read(&mut buf).await {
             Ok(read) => {
@@ -50,7 +112,15 @@ impl Connection {
                 let mut d = BrotliDecoder::new(&buf[..]);
                 let mut decompressed_buf = Vec::new();
                 d.read_to_end(&mut decompressed_buf)?;
-                Ok(decompressed_buf)
+
+                match self.decrypt(&decompressed_buf, key)? {
+                    Some(decrypted) => {
+                        Ok((decrypted, true))
+                    },
+                    None => {
+                        Ok((decompressed_buf, false))
+                    }
+                }
             }
             Err(err) => {
                 Err(err)
@@ -58,14 +128,15 @@ impl Connection {
         };
     }
 
-    /// Abstracts the write operation on the socket, returning the read buffer to abstract the operation to add compression later
     async fn write(&mut self, buf: &[u8]) -> std::io::Result<()> {
         let mut params = CompressParams::new();
         params.quality(6);
         let mut e = BrotliEncoder::from_params(Vec::new(), &params);
         e.write_all(buf)?;
         let compressed_buf = e.finish()?;
-        return self.socket.write_all(&compressed_buf).await;
+        // Maybe encrypt because we might not have a public key. And thus need to send unencrypted
+        let maybe_encrypted = self.encrypt(&compressed_buf)?;
+        return self.socket.write_all(&maybe_encrypted).await;
     }
 }
 
@@ -80,16 +151,17 @@ struct CLI {
     port: u16,
 }
 
-async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T) where T: StoreAble + ACLAble + UserAble + Send + Sync + HashMapAble<String> {
+async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T, key: Identity) where T: StoreAble + ACLAble + UserAble + Send + Sync + HashMapAble<String> {
     loop {
         tokio::time::sleep(std::time::Duration::from_nanos(20)).await;
         let mut blocked = sockets.lock().await;
         for connection in blocked.iter_mut() {
             let rsp_id = Uuid::new_v4();
-            match connection.read().await {
+            match connection.read(&key).await {
                 Ok(buf) => {
                     log::trace!("Read from socket: {}", connection.id);
-                    let message: Message = match from_slice(&buf) {
+
+                    let message: Message = match from_slice(&buf.0) {
                         Ok(msg) => msg,
                         Err(err) => {
                             log::error!("Error parsing Message: {}", err);
@@ -427,6 +499,32 @@ async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T) wher
                                     };
                                     connection.write(&*rsp).await.unwrap();
                                 },
+                                Command::KEYEXCHANGE { pub_key } => {
+                                    if !buf.1 {
+                                        log::error!("Received unencrypted key exchange message");
+                                        connection.is_closed = true;
+                                        continue;
+                                    }
+                                    connection.pub_key = match age::x25519::Recipient::from_str(&*pub_key) {
+                                        Ok(key) => Some(key),
+                                        Err(err) => {
+                                            log::error!("Error parsing public key: {}", err);
+                                            let rsp = Message::new_response(rsp_id, MessageResponse {
+                                                content: Some(Bson::String(err.to_string())),
+                                                status: OperationStatus::Failure,
+                                                in_reply_to: Some(message.id),
+                                            }).to_vec().unwrap();
+                                            connection.write(&*rsp).await.unwrap();
+                                            continue;
+                                        }
+                                    };
+                                    let rsp = Message::new_response(rsp_id, MessageResponse {
+                                        content: None,
+                                        status: OperationStatus::Success,
+                                        in_reply_to: Some(message.id),
+                                    }).to_vec().unwrap();
+                                    connection.write(&*rsp).await.unwrap();
+                                },
                             }
                         }
                         MessageContent::Response(_) => {
@@ -473,8 +571,38 @@ async fn socket_listener(sockets: Arc<Mutex<Vec<Connection>>>) {
 #[tokio::main]
 async fn main() {
     init_env_logger();
+
+    let private_key = match std::fs::File::open("identity.age") {
+        Ok(mut file) => {
+            let mut buf = Vec::new();
+            match file.read_to_end(&mut buf) {
+                Ok(_) => {}
+                Err(err) => {
+                    log::error!("Error reading identity file: {}", err);
+                    std::process::exit(-1);
+                }
+            }
+            Identity::from(std::string::String::from(std::str::from_utf8(&buf).unwrap()).parse().unwrap())
+        }
+        Err(_) => {
+            log::warn!("No identity file found or not readable. Generating new identity file");
+            let key = Identity::generate();
+            match std::fs::write("identity.age", key.to_string().expose_secret()) {
+                Ok(_) => {}
+                Err(err) => {
+                    log::error!("Error writing identity file: {}", err);
+                    std::process::exit(-1);
+                }
+            }
+            key
+        }
+    };
+    let public_key = private_key.to_public();
+    log::info!("Public key: \"{}\"", public_key);
+
     let sockets: Arc<Mutex<Vec<Connection>>> = Arc::new(Mutex::new(Vec::new()));
     let cloned_sockets = sockets.clone();
+
     std::thread::spawn(move || {
         let rt = match tokio::runtime::Runtime::new() {
             Ok(rt) => rt,
@@ -486,7 +614,7 @@ async fn main() {
         let sockets = cloned_sockets.clone();
         rt.block_on(async move {
             let store = Store::default();
-            worker_loop(sockets, store).await;
+            worker_loop(sockets, store, private_key).await;
         });
     });
     socket_listener(sockets).await;

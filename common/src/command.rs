@@ -75,7 +75,9 @@ pub enum Command {
         key: String,
         field: String,
     },
-
+    KEYEXCHANGE {
+        pub_key: String,
+    }
 }
 
 const BUFFER_SIZE: usize = 1024;
@@ -318,6 +320,7 @@ impl Command {
             Command::HEXISTS { .. } => 13,
             Command::HINCRBY { .. } => 14,
             Command::HSTRLEN { .. } => 15,
+            Command::KEYEXCHANGE { .. } => 16,
         }
     }
 }

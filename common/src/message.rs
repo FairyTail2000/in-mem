@@ -30,7 +30,7 @@ pub struct Message {
     pub id: Uuid,
     pub content: MessageContent,
     pub fragment: bool,
-    pub last_fragment: bool
+    pub last_fragment: bool,
 }
 
 impl Display for Message {
