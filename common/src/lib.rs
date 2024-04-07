@@ -16,7 +16,7 @@ pub fn init_env_logger() {
                 record.args()
             )
         })
-        .filter_level(log::LevelFilter::Debug)
+        .filter_level(log::LevelFilter::Trace)
         .write_style(env_logger::WriteStyle::Always)
         .init();
 }

@@ -878,6 +878,8 @@ dependencies = [
 name = "in-mem-client"
 version = "0.1.0"
 dependencies = [
+ "age",
+ "brotli2",
  "bson",
  "chrono",
  "clap",

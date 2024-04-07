@@ -43,9 +43,15 @@ impl Connection {
         }
     }
 
-    /// Decrypts the buffer with the private key of the server, if the public key is not present it will return the buffer as is
+    /// Decrypts the buffer with the private key of the server, if the first bytes are age-encrypt
     fn decrypt(&self, buf: &[u8], key: &Identity) -> std::io::Result<Option<Vec<u8>>> {
-        if self.pub_key.is_some() {
+        let encrypted = match std::str::from_utf8(&buf[..11]) {
+            Ok(header) => {
+                header == "age-encrypt"
+            },
+            Err(_) => false
+        };
+        if encrypted {
             let dec = match Decryptor::new(&buf[..]) {
                 Ok(dec) => {
                     match dec {
@@ -83,7 +89,6 @@ impl Connection {
         return Ok(None);
     }
 
-    /// Encrypts the buffer with the public key of the recipient, if the public key is not present it will return the buffer as is
     fn encrypt(&self, buf: &[u8]) -> std::io::Result<Vec<u8>> {
         return match self.pub_key.as_ref() {
             Some(key) => {
@@ -100,7 +105,23 @@ impl Connection {
         };
     }
 
-    /// Abstracts the read operation on the socket, returning the read buffer to abstract the operation to add compression later
+    fn compress(&self, buf: &[u8]) -> std::io::Result<Vec<u8>> {
+        let mut params = CompressParams::new();
+        params.quality(6);
+        let mut e = BrotliEncoder::from_params(Vec::new(), &params);
+        e.write_all(buf)?;
+        let compressed_buf = e.finish()?;
+        return Ok(compressed_buf);
+    }
+    
+    fn decompress(&self, buf: &[u8]) -> std::io::Result<Vec<u8>> {
+        let mut d = BrotliDecoder::new(&buf[..]);
+        let mut decompressed_buf = Vec::new();
+        d.read_to_end(&mut decompressed_buf)?;
+        return Ok(decompressed_buf);
+    }
+    
+    /// Read -> decompress -> decrypt
     async fn read(&mut self, key: &Identity) -> std::io::Result<(Vec<u8>, bool)> {
         let mut buf = vec![0; 1024];
         return match self.socket.read(&mut buf).await {
@@ -109,15 +130,16 @@ impl Connection {
                     return Err(std::io::Error::from(std::io::ErrorKind::ConnectionAborted));
                 }
                 buf.truncate(read);
-                let mut d = BrotliDecoder::new(&buf[..]);
-                let mut decompressed_buf = Vec::new();
-                d.read_to_end(&mut decompressed_buf)?;
-
+                log::trace!("Read {} bytes from socket, decompressing", read);
+                let decompressed_buf = self.decompress(&buf)?;
+                log::trace!("Decompressed {} bytes, decrypting", decompressed_buf.len());
                 match self.decrypt(&decompressed_buf, key)? {
                     Some(decrypted) => {
+                        log::trace!("Decrypted {} bytes", decrypted.len());
                         Ok((decrypted, true))
                     },
                     None => {
+                        log::trace!("No public key present, returning decompressed buffer");
                         Ok((decompressed_buf, false))
                     }
                 }
@@ -128,15 +150,12 @@ impl Connection {
         };
     }
 
+    /// Encrypt -> compress -> write
     async fn write(&mut self, buf: &[u8]) -> std::io::Result<()> {
-        let mut params = CompressParams::new();
-        params.quality(6);
-        let mut e = BrotliEncoder::from_params(Vec::new(), &params);
-        e.write_all(buf)?;
-        let compressed_buf = e.finish()?;
+        let maybe_encrypted = self.encrypt(&buf)?;
+        let compressed_buf = self.compress(&maybe_encrypted)?;
         // Maybe encrypt because we might not have a public key. And thus need to send unencrypted
-        let maybe_encrypted = self.encrypt(&compressed_buf)?;
-        return self.socket.write_all(&maybe_encrypted).await;
+        return self.socket.write_all(&compressed_buf).await;
     }
 }
 
@@ -164,7 +183,7 @@ async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T, key:
                     let message: Message = match from_slice(&buf.0) {
                         Ok(msg) => msg,
                         Err(err) => {
-                            log::error!("Error parsing Message: {}", err);
+                            log::error!("Error parsing Message: {:?}", err);
                             connection.is_closed = true;
                             let rsp = Message::new_response(rsp_id, MessageResponse {
                                 content: Some(Bson::String(err.to_string())),
@@ -179,7 +198,7 @@ async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T, key:
                     match message.content {
                         MessageContent::Command(cmd) => {
                             log::trace!("Received command: {:?}", cmd);
-                            if !store.acl_is_allowed(&connection.id.to_string(), cmd.to_id()) {
+                            /*if !store.acl_is_allowed(&connection.id.to_string(), cmd.to_id()) {
                                 log::trace!("Command is not allowed for user: {:?}", connection.user.clone().unwrap_or("Not Logged In".to_string()));
                                 let rsp = Message::new_response(rsp_id, MessageResponse {
                                     content: None,
@@ -203,7 +222,7 @@ async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T, key:
                                 }
                                 continue;
                             }
-                            log::trace!("Command is allowed");
+                            log::trace!("Command is allowed");*/
                             
                             match cmd {
                                 Command::Get { key, default } => {

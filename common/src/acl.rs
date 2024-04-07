@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use crate::command::Command;
 
 pub type CommandID = u16;
 
@@ -19,6 +20,11 @@ impl ACL {
     }
 
     pub fn is_allowed(&self, user: &str, command: CommandID) -> bool {
+        // 16 = KEYEXCHANGE 3 = HEARTBEAT
+        if command == 16 || command == 3 {
+            return true;
+        }
+        
         self.map.get(user).map_or(false, |set| set.contains(&command))
     }
     
