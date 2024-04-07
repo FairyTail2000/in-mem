@@ -70,4 +70,8 @@ impl Message {
     pub fn to_vec(&self) -> bson::ser::Result<Vec<u8>> {
         return bson::to_vec(self);
     }
+    
+    pub fn from_slice(slice: &[u8]) -> bson::de::Result<Self> {
+        return bson::from_slice(slice);
+    }
 }

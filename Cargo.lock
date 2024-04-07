@@ -393,11 +393,14 @@ checksum = "acbf1af155f9b9ef647e42cdc158db4b64a1b61f743629225fde6f3e0be2a7c7"
 name = "common"
 version = "0.1.0"
 dependencies = [
+ "age",
+ "brotli2",
  "bson",
  "chrono",
  "env_logger",
  "log",
  "serde",
+ "tokio",
  "uuid",
 ]
 
@@ -861,7 +864,6 @@ name = "in-mem"
 version = "0.1.0"
 dependencies = [
  "age",
- "brotli2",
  "bson",
  "chrono",
  "clap",
@@ -879,8 +881,6 @@ name = "in-mem-client"
 version = "0.1.0"
 dependencies = [
  "age",
- "brotli2",
- "bson",
  "chrono",
  "clap",
  "common",

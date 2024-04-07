@@ -80,12 +80,11 @@ pub enum Command {
     }
 }
 
-const BUFFER_SIZE: usize = 1024;
 
-impl TryFrom<[u8; BUFFER_SIZE]> for Command {
+impl TryFrom<Vec<u8>> for Command {
     type Error = String;
 
-    fn try_from(buf: [u8; BUFFER_SIZE]) -> Result<Command, Self::Error> {
+    fn try_from(buf: Vec<u8>) -> Result<Command, Self::Error> {
         let buf = std::str::from_utf8(&buf).unwrap().replace('\0', "");
         let mut parts = buf.splitn(3, ' ');
         let part = parts.next().unwrap().trim();
@@ -295,7 +294,7 @@ impl TryFrom<&str> for Command {
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         let val = value.as_bytes();
-        let mut buf = [0u8; BUFFER_SIZE];
+        let mut buf = Vec::with_capacity(val.len());
         buf[..val.len()].copy_from_slice(val);
         return Self::try_from(buf);
     }
