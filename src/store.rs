@@ -1,4 +1,5 @@
 use std::collections::{HashMap, TryReserveError};
+
 use common::acl::{ACL, CommandID};
 
 pub trait StoreAble {
@@ -54,7 +55,7 @@ impl StoreAble for Store {
             Ok(_) => {
                 self.map.insert(key, value);
                 Ok(())
-            },
+            }
             Err(_) => {
                 self.map.shrink_to_fit();
                 match self.map.try_reserve(1) {
@@ -87,7 +88,7 @@ impl ACLAble for Store {
     fn acl_is_allowed(&self, user: &str, command: CommandID) -> bool {
         self.acl.is_allowed(user, command)
     }
-    
+
     fn acl_list(&self, user: &str) -> Vec<CommandID> {
         self.acl.list(user)
     }
@@ -106,7 +107,7 @@ impl UserAble for Store {
         match self.users.get(user) {
             Some(p) => {
                 p == password
-            },
+            }
             None => false
         }
     }
@@ -126,7 +127,7 @@ impl HashMapAble<String> for Store {
             Some(map) => {
                 map.remove(&key);
                 true
-            },
+            }
             None => false
         }
     }
@@ -135,7 +136,7 @@ impl HashMapAble<String> for Store {
         match self.hash_maps.get(&map_key) {
             Some(map) => {
                 map.contains_key(&key)
-            },
+            }
             None => false
         }
     }
@@ -144,7 +145,7 @@ impl HashMapAble<String> for Store {
         match self.hash_maps.get(&map_key) {
             Some(map) => {
                 map.get(&key)
-            },
+            }
             None => None
         }
     }
@@ -158,7 +159,7 @@ impl HashMapAble<String> for Store {
                     new_map.insert(k.clone(), v.clone());
                 }
                 Ok(new_map)
-            },
+            }
             None => Ok(HashMap::new())
         }
     }
@@ -172,7 +173,7 @@ impl HashMapAble<String> for Store {
                     values.push(v.clone());
                 }
                 Ok(values)
-            },
+            }
             None => Ok(Vec::new())
         }
     }
@@ -186,7 +187,7 @@ impl HashMapAble<String> for Store {
                     keys.push(k.clone());
                 }
                 Ok(keys)
-            },
+            }
             None => Ok(Vec::new())
         }
     }
@@ -213,7 +214,7 @@ impl HashMapAble<String> for Store {
                     Some(v) => Some(v.len()),
                     None => None
                 }
-            },
+            }
             None => None
         }
     }
@@ -227,7 +228,7 @@ impl HashMapAble<String> for Store {
                 let new_value = v.parse::<i64>().unwrap() + value;
                 map.insert(key, new_value.to_string());
                 new_value
-            },
+            }
             None => {
                 map.insert(key.clone(), value.to_string());
                 value

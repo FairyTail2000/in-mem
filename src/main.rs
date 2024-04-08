@@ -1,29 +1,31 @@
-mod store;
-
-use clap::Parser;
-use std::net::{IpAddr, SocketAddr};
-use std::sync::Arc;
-use tokio::net::TcpListener;
-use tokio::sync::Mutex;
-use bson::{Bson, Document};
-use uuid::Uuid;
-use common::command::{ACLOperation, Command};
-use common::init_env_logger;
-use common::message::{Message, MessageContent, MessageResponse, OperationStatus};
-use crate::store::{ACLAble, HashMapAble, Store, StoreAble, UserAble};
 use std::io::prelude::Read;
+use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
+use std::sync::Arc;
+
 use age::secrecy::ExposeSecret;
 use age::x25519::Identity;
+use bson::{Bson, Document};
+use clap::Parser;
 use sha2::{Digest, Sha512};
-use common::connection::Connection;
+use tokio::net::TcpListener;
+use tokio::sync::Mutex;
+use uuid::Uuid;
 
+use common::command::{ACLOperation, Command};
+use common::connection::Connection;
+use common::init_env_logger;
+use common::message::{Message, MessageContent, MessageResponse, OperationStatus};
+
+use crate::store::{ACLAble, HashMapAble, Store, StoreAble, UserAble};
+
+mod store;
 
 #[derive(Parser, Debug)]
 #[command(name = "in-mem", version = "1.0", about = "A small in mem client")]
 struct Cli {
     /// Name of the person to greet
-    #[arg(short, long, default_value = "6", env = "BROTLI_EFFORT", help = "Brotli compression effort level, 0-11",value_parser = clap::value_parser!(u8).range(0..12))]
+    #[arg(short, long, default_value = "6", env = "BROTLI_EFFORT", help = "Brotli compression effort level, 0-11", value_parser = clap::value_parser ! (u8).range(0..12))]
     brotli_effort: u8,
     /// The host to bind to
     #[arg(default_value = "127.0.0.1", env = "HOST", help = "The host to bind to")]
@@ -70,7 +72,7 @@ async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T, key:
                                 continue;
                             }
                             log::trace!("Command is allowed");*/
-                            
+
                             match cmd {
                                 Command::Get { key, default } => {
                                     let rsp = match store.get(&key) {
@@ -90,7 +92,7 @@ async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T, key:
                                         }
                                     };
                                     connection.send_message(&rsp).await.unwrap();
-                                },
+                                }
                                 Command::Set { key, value } => {
                                     let rsp = match store.set(key, value) {
                                         Ok(_) => {
@@ -99,7 +101,7 @@ async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T, key:
                                                 status: OperationStatus::Success,
                                                 in_reply_to: Some(message.id),
                                             })
-                                        },
+                                        }
                                         Err(err) => {
                                             Message::new_response(rsp_id, MessageResponse {
                                                 content: Some(Bson::String(err.to_string())),
@@ -109,7 +111,7 @@ async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T, key:
                                         }
                                     };
                                     connection.send_message(&rsp).await.unwrap();
-                                },
+                                }
                                 Command::Heartbeat => {
                                     let rsp = Message::new_response(rsp_id, MessageResponse {
                                         content: None,
@@ -117,7 +119,7 @@ async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T, key:
                                         in_reply_to: Some(message.id),
                                     });
                                     connection.send_message(&rsp).await.unwrap();
-                                },
+                                }
                                 Command::Delete { key } => {
                                     let rsp = match store.remove(&key) {
                                         None => {
@@ -136,7 +138,7 @@ async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T, key:
                                         }
                                     };
                                     connection.send_message(&rsp).await.unwrap();
-                                },
+                                }
                                 Command::ACL { op } => {
                                     match op {
                                         ACLOperation::Set { user, command } => {
@@ -168,7 +170,7 @@ async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T, key:
                                             connection.send_message(&rsp).await.unwrap();
                                         }
                                     }
-                                },
+                                }
                                 Command::Login { user, password } => {
                                     let mut hasher = Sha512::new();
                                     hasher.update(&password);
@@ -189,7 +191,7 @@ async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T, key:
                                         })
                                     };
                                     connection.send_message(&rsp).await.unwrap();
-                                },
+                                }
                                 Command::HDEL { key, field } => {
                                     let rsp = match store.hremove(key, field) {
                                         true => {
@@ -208,7 +210,7 @@ async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T, key:
                                         }
                                     };
                                     connection.send_message(&rsp).await.unwrap();
-                                },
+                                }
                                 Command::HGET { key, field } => {
                                     let rsp = match store.hget(key, field) {
                                         None => {
@@ -227,7 +229,7 @@ async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T, key:
                                         }
                                     };
                                     connection.send_message(&rsp).await.unwrap();
-                                },
+                                }
                                 // Some might fail to insert. But it's not reported which failed ;)
                                 Command::HSET { key, value } => {
                                     let mut okay = Vec::new();
@@ -262,7 +264,7 @@ async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T, key:
                                         })
                                     };
                                     connection.send_message(&rsp).await.unwrap();
-                                },
+                                }
                                 Command::HGETALL { key } => {
                                     let rsp = match store.hget_all(key) {
                                         Ok(map) => {
@@ -282,7 +284,7 @@ async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T, key:
                                         }
                                     };
                                     connection.send_message(&rsp).await.unwrap();
-                                },
+                                }
                                 Command::HKEYS { key } => {
                                     let rsp = match store.hkeys(key) {
                                         Ok(keys) => {
@@ -302,7 +304,7 @@ async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T, key:
                                         }
                                     };
                                     connection.send_message(&rsp).await.unwrap();
-                                },
+                                }
                                 Command::HLEN { key } => {
                                     let rsp = Message::new_response(rsp_id, MessageResponse {
                                         content: Some(Bson::Int64(store.hlen(key) as i64)),
@@ -310,7 +312,7 @@ async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T, key:
                                         in_reply_to: Some(message.id),
                                     });
                                     connection.send_message(&rsp).await.unwrap();
-                                },
+                                }
                                 Command::HVALS { key } => {
                                     let rsp = match store.hget_all_values(key) {
                                         Ok(values) => {
@@ -330,7 +332,7 @@ async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T, key:
                                         }
                                     };
                                     connection.send_message(&rsp).await.unwrap();
-                                },
+                                }
                                 Command::HEXISTS { key, field } => {
                                     let rsp = Message::new_response(rsp_id, MessageResponse {
                                         content: Some(Bson::Boolean(store.hcontains(key, field))),
@@ -338,7 +340,7 @@ async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T, key:
                                         in_reply_to: Some(message.id),
                                     });
                                     connection.send_message(&rsp).await.unwrap();
-                                },
+                                }
                                 Command::HINCRBY { key, field, value } => {
                                     let rsp = match store.hincrby(key, field, value) {
                                         Ok(val) => {
@@ -357,7 +359,7 @@ async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T, key:
                                         }
                                     };
                                     connection.send_message(&rsp).await.unwrap();
-                                },
+                                }
                                 Command::HSTRLEN { key, field } => {
                                     let rsp = match store.hstr_len(key, field) {
                                         Some(len) => {
@@ -376,7 +378,7 @@ async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T, key:
                                         }
                                     };
                                     connection.send_message(&rsp).await.unwrap();
-                                },
+                                }
                                 Command::KEYEXCHANGE { pub_key } => {
                                     if !encrypted {
                                         log::error!("Received unencrypted key exchange message");
@@ -386,7 +388,7 @@ async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T, key:
                                     match age::x25519::Recipient::from_str(&*pub_key) {
                                         Ok(key) => {
                                             connection.set_pub_key(key.clone())
-                                        },
+                                        }
                                         Err(err) => {
                                             log::error!("Error parsing public key: {}", err);
                                             let rsp = Message::new_response(rsp_id, MessageResponse {
@@ -404,7 +406,7 @@ async fn worker_loop<T>(sockets: Arc<Mutex<Vec<Connection>>>, mut store: T, key:
                                         in_reply_to: Some(message.id),
                                     });
                                     connection.send_message(&rsp).await.unwrap();
-                                },
+                                }
                             }
                         }
                         MessageContent::Response(_) => {

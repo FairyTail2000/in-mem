@@ -23,6 +23,4 @@ pub fn init_env_logger() {
 }
 
 #[cfg(test)]
-mod tests {
-
-}
+mod tests {}

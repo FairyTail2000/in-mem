@@ -1,8 +1,10 @@
 use std::fmt::Display;
+
+use bson;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
 use crate::command;
-use bson;
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct MessageResponse {
@@ -16,7 +18,7 @@ pub enum OperationStatus {
     Success,
     Failure,
     NotFound,
-    NotAllowed
+    NotAllowed,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -66,11 +68,11 @@ impl Message {
             last_fragment: false,
         }
     }
-    
+
     pub fn to_vec(&self) -> bson::ser::Result<Vec<u8>> {
         return bson::to_vec(self);
     }
-    
+
     pub fn from_slice(slice: &[u8]) -> bson::de::Result<Self> {
         return bson::from_slice(slice);
     }

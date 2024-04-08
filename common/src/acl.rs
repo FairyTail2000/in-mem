@@ -23,10 +23,10 @@ impl ACL {
         if command == 16 || command == 3 {
             return true;
         }
-        
+
         self.map.get(user).map_or(false, |set| set.contains(&command))
     }
-    
+
     pub fn list(&self, user: &str) -> Vec<CommandID> {
         self.map.get(user).map_or(Vec::new(), |set| set.iter().copied().collect())
     }

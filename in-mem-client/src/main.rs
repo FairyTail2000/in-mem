@@ -1,14 +1,15 @@
+use std::io::Read;
 use std::net::{IpAddr, SocketAddr};
+
 use age::secrecy::ExposeSecret;
 use age::x25519::Identity;
 use clap::Parser;
-use std::io::Read;
 use tokio::net::TcpStream;
 use uuid::Uuid;
+
 use common::{command, init_env_logger};
 use common::connection::Connection;
 use common::message::Message;
-
 
 #[derive(Parser, Debug)]
 #[command(name = "in-mem-client", version = "1.0", about = "A demo client to connect to the in-mem-server")]
@@ -83,10 +84,8 @@ async fn main() {
     log::info!("Public key: \"{}\"", public_key);
     connection.set_pub_key(server_public_key);
 
-    
-    
     let heartbeat_message = Message::new_command(Uuid::new_v4(), command::Command::Heartbeat);
-    let kex_msg = Message::new_command(Uuid::new_v4(), command::Command::KEYEXCHANGE {pub_key: public_key.clone().to_string() });
+    let kex_msg = Message::new_command(Uuid::new_v4(), command::Command::KEYEXCHANGE { pub_key: public_key.clone().to_string() });
     log::debug!("Sending key exchange message");
     match connection.send_message(&kex_msg).await {
         Ok(_) => {}

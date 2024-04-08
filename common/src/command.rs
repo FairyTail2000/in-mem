@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
-use crate::acl::CommandID;
 
+use crate::acl::CommandID;
 
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum ACLOperation {
@@ -77,7 +77,7 @@ pub enum Command {
     },
     KEYEXCHANGE {
         pub_key: String,
-    }
+    },
 }
 
 
@@ -115,7 +115,7 @@ impl TryFrom<Vec<u8>> for Command {
                     Some(key) => key.to_string()
                 };
                 Ok(Command::Delete { key })
-            },
+            }
             "ACL" => {
                 let op = match parts.next() {
                     None => return Err("Operation not provided".to_string()),
@@ -135,7 +135,7 @@ impl TryFrom<Vec<u8>> for Command {
                         let command = match op_parts.next() {
                             None => return Err("Command not provided".to_string()),
                             Some(cmd) => {
-                                match cmd.parse() { 
+                                match cmd.parse() {
                                     Ok(cmd) => cmd,
                                     Err(_) => return Err("Invalid command".to_string())
                                 }
@@ -160,7 +160,7 @@ impl TryFrom<Vec<u8>> for Command {
                     }
                     _ => Err(format!("Invalid ACL operation: {}", op)),
                 }
-            },
+            }
             "LOGIN" => {
                 let user = match parts.next() {
                     None => return Err("User not provided".to_string()),
@@ -171,7 +171,7 @@ impl TryFrom<Vec<u8>> for Command {
                     Some(password) => password.to_string()
                 };
                 Ok(Command::Login { user, password })
-            },
+            }
             "HGET" => {
                 let key = match parts.next() {
                     None => return Err("Key not provided".to_string()),
@@ -182,7 +182,7 @@ impl TryFrom<Vec<u8>> for Command {
                     Some(field) => field.to_string()
                 };
                 Ok(Command::HGET { key, field })
-            },
+            }
             "HSET" => {
                 let key = match parts.next() {
                     None => return Err("Key not provided".to_string()),
@@ -202,7 +202,7 @@ impl TryFrom<Vec<u8>> for Command {
                     value.insert(k, v);
                 }
                 Ok(Command::HSET { key, value })
-            },
+            }
             "HDEL" => {
                 let key = match parts.next() {
                     None => return Err("Key not provided".to_string()),
@@ -213,35 +213,35 @@ impl TryFrom<Vec<u8>> for Command {
                     Some(field) => field.to_string()
                 };
                 Ok(Command::HDEL { key, field })
-            },
+            }
             "HGETALL" => {
                 let key = match parts.next() {
                     None => return Err("Key not provided".to_string()),
                     Some(key) => key.to_string()
                 };
                 Ok(Command::HGETALL { key })
-            },
+            }
             "HKEYS" => {
                 let key = match parts.next() {
                     None => return Err("Key not provided".to_string()),
                     Some(key) => key.to_string()
                 };
                 Ok(Command::HKEYS { key })
-            },
+            }
             "HVALS" => {
                 let key = match parts.next() {
                     None => return Err("Key not provided".to_string()),
                     Some(key) => key.to_string()
                 };
                 Ok(Command::HVALS { key })
-            },
+            }
             "HLEN" => {
                 let key = match parts.next() {
                     None => return Err("Key not provided".to_string()),
                     Some(key) => key.to_string()
                 };
                 Ok(Command::HLEN { key })
-            },
+            }
             "HEXISTS" => {
                 let key = match parts.next() {
                     None => return Err("Key not provided".to_string()),
@@ -252,7 +252,7 @@ impl TryFrom<Vec<u8>> for Command {
                     Some(field) => field.to_string()
                 };
                 Ok(Command::HEXISTS { key, field })
-            },
+            }
             "HINCRBY" => {
                 let key = match parts.next() {
                     None => return Err("Key not provided".to_string()),
@@ -272,7 +272,7 @@ impl TryFrom<Vec<u8>> for Command {
                     }
                 };
                 Ok(Command::HINCRBY { key, field, value })
-            },
+            }
             "HSTRLEN" => {
                 let key = match parts.next() {
                     None => return Err("Key not provided".to_string()),
@@ -283,7 +283,7 @@ impl TryFrom<Vec<u8>> for Command {
                     Some(field) => field.to_string()
                 };
                 Ok(Command::HSTRLEN { key, field })
-            },
+            }
             _ => Err(format!("Invalid command: {}", part)),
         }
     }

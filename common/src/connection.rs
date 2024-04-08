@@ -147,7 +147,7 @@ impl Connection {
         // Maybe encrypt because we might not have a public key. And thus need to send unencrypted
         return self.socket.write_all(&compressed_buf).await;
     }
-    
+
     pub async fn send_message(&mut self, msg: &Message) -> std::io::Result<()> {
         let msg = msg.to_vec().unwrap();
         let msg = self.encrypt(&msg).unwrap();
@@ -157,13 +157,13 @@ impl Connection {
         self.socket.write_all(&msg_size_bytes).await?;
         self.socket.write_all(&*msg).await
     }
-    
+
     // Boolean flag indicates that the message was encrypted
     pub async fn read_message(&mut self, key: &Identity) -> std::io::Result<(Message, bool)> {
         let mut len_bytes = [0u8; 4];
         self.socket.read_exact(&mut len_bytes).await?;
         let msg_size = u32::from_be_bytes(len_bytes); // Convert from big endian
-        
+
         log::trace!("Reading message of size {}bytes", msg_size);
         let mut buf = vec![0; msg_size as usize];
         self.socket.read_exact(&mut buf).await?;
@@ -173,32 +173,32 @@ impl Connection {
         let after = buf.len();
         return Ok((Message::from_slice(&buf).unwrap(), before != after));
     }
-    
+
     /// Important. Does not actually close the connection, just sets a flag closed flag
     pub fn close(&mut self) {
         self.is_closed = true;
     }
-    
+
     pub fn is_closed(&self) -> bool {
         self.is_closed
     }
-    
+
     pub fn get_id(&self) -> Uuid {
         self.id
     }
-    
+
     pub fn get_user(&self) -> Option<String> {
         self.user.clone()
     }
-    
+
     pub fn set_user(&mut self, user: String) {
         self.user = Some(user);
     }
-    
+
     pub fn set_pub_key(&mut self, key: Recipient) {
         self.pub_key = Some(key);
     }
-    
+
     pub fn get_pub_key(&self) -> Option<Recipient> {
         self.pub_key.clone()
     }
