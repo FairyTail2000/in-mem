@@ -452,7 +452,7 @@ async fn main() {
 
     let cli = Cli::parse();
 
-    let private_key = match std::fs::File::open("identity.age") {
+    let private_key = match std::fs::File::open("server-identity.age") {
         Ok(mut file) => {
             let mut buf = Vec::new();
             match file.read_to_end(&mut buf) {
@@ -467,7 +467,7 @@ async fn main() {
         Err(_) => {
             log::warn!("No identity file found or not readable. Generating new identity file");
             let key = Identity::generate();
-            match std::fs::write("identity.age", key.to_string().expose_secret()) {
+            match std::fs::write("server-identity.age", key.to_string().expose_secret()) {
                 Ok(_) => {}
                 Err(err) => {
                     log::error!("Error writing identity file: {}", err);

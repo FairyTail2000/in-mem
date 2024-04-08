@@ -1,2 +1,3 @@
 /target
-/identity.age
+/server-identity.age
+/identity-client.age

@@ -53,7 +53,7 @@ async fn main() {
         Err(_) => {
             log::warn!("No identity file found or not readable. Generating new identity file");
             let key = Identity::generate();
-            match std::fs::write("identity2.age", key.to_string().expose_secret()) {
+            match std::fs::write("identity-client.age", key.to_string().expose_secret()) {
                 Ok(_) => {}
                 Err(err) => {
                     log::error!("Error writing identity file: {}", err);
@@ -63,8 +63,24 @@ async fn main() {
             key
         }
     };
+    let server_public_key = match std::fs::File::open("identity-server.age") {
+        Ok(mut file) => {
+            let mut buf = Vec::new();
+            match file.read_to_end(&mut buf) {
+                Ok(_) => {}
+                Err(err) => {
+                    log::error!("Error reading identity file: {}", err);
+                    std::process::exit(-1);
+                }
+            }
+            Identity::from(std::string::String::from(std::str::from_utf8(&buf).unwrap()).parse().unwrap()).to_public()
+        }
+        Err(_) => {
+            log::error!("No identity file found or not readable. Generating new identity file");
+            std::process::exit(-1);
+        }
+    };
     let public_key = private_key.to_public();
-    let server_public_key = Recipient::from_str( "age1jzh3n3x83jm3e77zlwkxh28uekg4emjfu962uwkzp04remlnngls52d6ve").unwrap();
     log::info!("Public key: \"{}\"", public_key);
     connection.set_pub_key(server_public_key);
 
