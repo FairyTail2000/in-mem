@@ -1,9 +1,8 @@
 use std::net::{IpAddr, SocketAddr};
 use age::secrecy::ExposeSecret;
-use age::x25519::{Identity, Recipient};
+use age::x25519::Identity;
 use clap::Parser;
 use std::io::Read;
-use std::str::FromStr;
 use tokio::net::TcpStream;
 use uuid::Uuid;
 use common::{command, init_env_logger};
