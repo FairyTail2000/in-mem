@@ -36,7 +36,7 @@ pub trait HashMapAble<T> {
     fn hincrby(&mut self, map_key: String, key: String, value: i64) -> Result<i64, TryReserveError>;
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct Store {
     map: HashMap<String, String>,
     acl: ACL,
