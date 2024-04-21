@@ -36,7 +36,7 @@ struct Cli {
 }
 
 async fn handle_message<T>(message: Message, connection: &mut Connection, store: &Arc<Mutex<T>>, encrypted: bool, rsp_id: Uuid) -> Option<Message> where T: StoreAble + ACLAble + UserAble + Send + Sync + HashMapAble<String> {
-    match message.content {
+    return match message.content {
         MessageContent::Command(cmd) => {
             log::trace!("Received command: {:?}", cmd);
             /*if !store.acl_is_allowed(&connection.id.to_string(), cmd.to_id()) {
@@ -84,7 +84,7 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
                             })
                         }
                     };
-                    return Some(rsp);
+                    Some(rsp)
                 }
                 Command::Set { key, value } => {
                     let mut store = store.lock().await;
@@ -104,7 +104,7 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
                             })
                         }
                     };
-                    return Some(rsp);
+                    Some(rsp)
                 }
                 Command::Heartbeat => {
                     let rsp = Message::new_response(rsp_id, MessageResponse {
@@ -112,7 +112,7 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
                         status: OperationStatus::Success,
                         in_reply_to: Some(message.id),
                     });
-                    return Some(rsp);
+                    Some(rsp)
                 }
                 Command::Delete { key } => {
                     let mut store = store.lock().await;
@@ -132,7 +132,7 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
                             })
                         }
                     };
-                    return Some(rsp);
+                    Some(rsp)
                 }
                 Command::ACL { op } => {
                     match op {
@@ -144,7 +144,7 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
                                 status: OperationStatus::Success,
                                 in_reply_to: Some(message.id),
                             });
-                            return Some(rsp);
+                            Some(rsp)
                         }
                         ACLOperation::Remove { user, command } => {
                             let mut store = store.lock().await;
@@ -154,7 +154,7 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
                                 status: OperationStatus::Success,
                                 in_reply_to: Some(message.id),
                             });
-                            return Some(rsp);
+                            Some(rsp)
                         }
                         ACLOperation::List { user } => {
                             let store = store.lock().await;
@@ -165,7 +165,7 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
                                 status: OperationStatus::Success,
                                 in_reply_to: Some(message.id),
                             });
-                            return Some(rsp);
+                            Some(rsp)
                         }
                     }
                 }
@@ -189,7 +189,7 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
                             in_reply_to: Some(message.id),
                         })
                     };
-                    return Some(rsp);
+                    Some(rsp)
                 }
                 Command::HDEL { key, field } => {
                     let mut store = store.lock().await;
@@ -209,7 +209,7 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
                             })
                         }
                     };
-                    return Some(rsp);
+                    Some(rsp)
                 }
                 Command::HGET { key, field } => {
                     let store = store.lock().await;
@@ -229,7 +229,7 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
                             })
                         }
                     };
-                    return Some(rsp);
+                    Some(rsp)
                 }
                 // Some might fail to insert. But it's not reported which failed ;)
                 Command::HSET { key, value } => {
@@ -265,7 +265,7 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
                             in_reply_to: Some(message.id),
                         })
                     };
-                    return Some(rsp);
+                    Some(rsp)
                 }
                 Command::HGETALL { key } => {
                     let store = store.lock().await;
@@ -286,7 +286,7 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
                             })
                         }
                     };
-                    return Some(rsp);
+                    Some(rsp)
                 }
                 Command::HKEYS { key } => {
                     let store = store.lock().await;
@@ -307,7 +307,7 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
                             })
                         }
                     };
-                    return Some(rsp);
+                    Some(rsp)
                 }
                 Command::HLEN { key } => {
                     let store = store.lock().await;
@@ -316,7 +316,7 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
                         status: OperationStatus::Success,
                         in_reply_to: Some(message.id),
                     });
-                    return Some(rsp);
+                    Some(rsp)
                 }
                 Command::HVALS { key } => {
                     let store = store.lock().await;
@@ -337,7 +337,7 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
                             })
                         }
                     };
-                    return Some(rsp);
+                    Some(rsp)
                 }
                 Command::HEXISTS { key, field } => {
                     let store = store.lock().await;
@@ -346,7 +346,7 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
                         status: OperationStatus::Success,
                         in_reply_to: Some(message.id),
                     });
-                    return Some(rsp);
+                    Some(rsp)
                 }
                 Command::HINCRBY { key, field, value } => {
                     let mut store = store.lock().await;
@@ -366,7 +366,7 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
                             })
                         }
                     };
-                    return Some(rsp);
+                    Some(rsp)
                 }
                 Command::HSTRLEN { key, field } => {
                     let store = store.lock().await;
@@ -386,12 +386,11 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
                             })
                         }
                     };
-                    return Some(rsp);
+                    Some(rsp)
                 }
                 Command::KEYEXCHANGE { pub_key } => {
                     if !encrypted {
                         log::error!("Received unencrypted key exchange message");
-                        connection.close();
                         return None;
                     }
                     match age::x25519::Recipient::from_str(&*pub_key) {
@@ -405,8 +404,7 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
                                 status: OperationStatus::Failure,
                                 in_reply_to: Some(message.id),
                             });
-                            connection.send_message(&rsp).await.unwrap();
-                            return None;
+                            return Some(rsp);
                         }
                     };
                     let rsp = Message::new_response(rsp_id, MessageResponse {
@@ -414,15 +412,15 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
                         status: OperationStatus::Success,
                         in_reply_to: Some(message.id),
                     });
-                    return Some(rsp);
+                    Some(rsp)
                 }
             }
         }
         MessageContent::Response(_) => {
             log::error!("Received unexpected response from client: {}", connection.get_id());
-            return None;
+            None
         }
-    }
+    };
 }
 
 async fn worker_loop<T>(mut connection: Connection, store: Arc<Mutex<T>>, key: Identity) where T: StoreAble + ACLAble + UserAble + Send + Sync + HashMapAble<String> {
@@ -439,7 +437,14 @@ async fn worker_loop<T>(mut connection: Connection, store: Arc<Mutex<T>>, key: I
                         break;
                     }
                     Some(rsp) => {
-                        connection.send_message(&rsp).await.unwrap();
+                        match connection.send_message(&rsp).await {
+                            Ok(_) => {}
+                            Err(err) => {
+                                log::error!("Error sending response: {}", err);
+                                connection.close();
+                                break;
+                            }
+                        };
                     }
                 }
             }
@@ -496,7 +501,21 @@ async fn main() {
                     std::process::exit(-1);
                 }
             }
-            Identity::from(std::string::String::from(std::str::from_utf8(&buf).unwrap()).parse().unwrap())
+            match std::str::from_utf8(&buf) {
+                Ok(read) => {
+                    match Identity::from_str(read) {
+                        Ok(key) => key,
+                        Err(err) => {
+                            log::error!("Error parsing identity file: {}", err);
+                            std::process::exit(-1);
+                        }
+                    }
+                }
+                Err(err) => {
+                    log::error!("Error parsing identity file: {}", err);
+                    std::process::exit(-1);
+                }
+            }
         }
         Err(_) => {
             log::warn!("No identity file found or not readable. Generating new identity file");
