@@ -1,12 +1,14 @@
-use uuid::Uuid;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpStream;
-use age::x25519::{Identity, Recipient};
+use std::io::prelude::{Read, Write};
+
 use age::Decryptor;
+use age::x25519::{Identity, Recipient};
 use brotli2::CompressParams;
 use brotli2::read::BrotliDecoder;
 use brotli2::write::BrotliEncoder;
-use std::io::prelude::{Read, Write};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpStream;
+use uuid::Uuid;
+
 use crate::message::Message;
 
 pub struct Connection {
@@ -15,7 +17,7 @@ pub struct Connection {
     id: Uuid,
     user: Option<String>,
     pub_key: Option<Recipient>,
-    brotli_effort: u8
+    brotli_effort: u8,
 }
 
 impl Connection {
@@ -26,7 +28,7 @@ impl Connection {
             id,
             user: None,
             pub_key: None,
-            brotli_effort
+            brotli_effort,
         }
     }
 
@@ -35,19 +37,19 @@ impl Connection {
         let encrypted = match std::str::from_utf8(&buf[..11]) {
             Ok(header) => {
                 header == "age-encrypt"
-            },
+            }
             Err(_) => false
         };
         if encrypted {
             let dec = match Decryptor::new(&buf[..]) {
                 Ok(dec) => {
                     match dec {
-                        Decryptor::Recipients(d) => {d},
+                        Decryptor::Recipients(d) => { d }
                         Decryptor::Passphrase(_) => {
                             return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Received passphrase encrypted message, expected public key encrypted message"));
                         }
                     }
-                },
+                }
                 Err(err) => {
                     let formatted = format!("Error creating decryptor: {}", err);
                     log::error!("{}", formatted);
@@ -73,7 +75,8 @@ impl Connection {
             }
             return Ok(Some(decrypted));
         }
-        return Ok(None);
+        // Return buffer unmodified if it's not encrypted, ensures compatibility with unencrypted messages
+        return Ok(Some(buf.to_vec()));
     }
 
     fn encrypt(&self, buf: &[u8]) -> std::io::Result<Vec<u8>> {
@@ -125,7 +128,7 @@ impl Connection {
                     Some(decrypted) => {
                         log::trace!("Decrypted {} bytes", decrypted.len());
                         Ok((decrypted, true))
-                    },
+                    }
                     None => {
                         log::trace!("No public key present, returning decompressed buffer");
                         Ok((decompressed_buf, false))
@@ -150,8 +153,8 @@ impl Connection {
 
     pub async fn send_message(&mut self, msg: &Message) -> std::io::Result<()> {
         let msg = msg.to_vec().unwrap();
-        let msg = self.encrypt(&msg).unwrap();
         let msg = self.compress(&msg).unwrap();
+        let msg = self.encrypt(&msg).unwrap();
         let msg_size_bytes = (msg.len() as u32).to_be_bytes();
         log::trace!("Sending message of size {}bytes", msg.len());
         self.socket.write_all(&msg_size_bytes).await?;
@@ -167,10 +170,10 @@ impl Connection {
         log::trace!("Reading message of size {}bytes", msg_size);
         let mut buf = vec![0; msg_size as usize];
         self.socket.read_exact(&mut buf).await?;
-        let buf = self.decompress(&buf)?;
         let before = buf.len();
         let buf = self.decrypt(&buf, key)?.unwrap();
         let after = buf.len();
+        let buf = self.decompress(&buf)?;
         return Ok((Message::from_slice(&buf).unwrap(), before != after));
     }
 
