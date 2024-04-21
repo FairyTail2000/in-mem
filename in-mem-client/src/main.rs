@@ -50,8 +50,8 @@ async fn main() {
             }
             Identity::from(std::string::String::from(std::str::from_utf8(&buf).unwrap()).parse().unwrap())
         }
-        Err(_) => {
-            log::warn!("No identity file found or not readable. Generating new identity file");
+        Err(err) => {
+            log::warn!("No identity file found or not readable. Generating new identity file: {}", err);
             let key = Identity::generate();
             match std::fs::write("identity-client.age", key.to_string().expose_secret()) {
                 Ok(_) => {}
@@ -63,7 +63,7 @@ async fn main() {
             key
         }
     };
-    let server_public_key = match std::fs::File::open("identity-server.age") {
+    let server_public_key = match std::fs::File::open("server-identity.age") {
         Ok(mut file) => {
             let mut buf = Vec::new();
             match file.read_to_end(&mut buf) {
