@@ -323,3 +323,26 @@ impl Command {
         }
     }
 }
+
+pub fn str_to_command_id(value: String) -> Result<CommandID, std::io::Error> {
+    match &*value {
+        "GET" => Ok(0),
+        "SET" => Ok(1),
+        "DELETE" => Ok(2),
+        "HEARTBEAT" => Ok(3),
+        "ACL" => Ok(4),
+        "LOGIN" => Ok(5),
+        "HGET" => Ok(6),
+        "HSET" => Ok(7),
+        "HDEL" => Ok(8),
+        "HGETALL" => Ok(9),
+        "HKEYS" => Ok(10),
+        "HVALS" => Ok(11),
+        "HLEN" => Ok(12),
+        "HEXISTS" => Ok(13),
+        "HINCRBY" => Ok(14),
+        "HSTRLEN" => Ok(15),
+        "KEYEXCHANGE" => Ok(16),
+        _ => Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid command id"))
+    }
+}

@@ -1,5 +1,7 @@
+use std::fs::create_dir_all;
 use std::io::prelude::Read;
 use std::net::{IpAddr, SocketAddr};
+use std::path::{MAIN_SEPARATOR, PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -7,12 +9,13 @@ use age::secrecy::ExposeSecret;
 use age::x25519::Identity;
 use bson::{Bson, Document};
 use clap::Parser;
+use directories::ProjectDirs;
 use sha2::{Digest, Sha512};
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-use common::command::{ACLOperation, Command};
+use common::command::{ACLOperation, Command, str_to_command_id};
 use common::connection::Connection;
 use common::init_env_logger;
 use common::message::{Message, MessageContent, MessageResponse, OperationStatus};
@@ -20,6 +23,7 @@ use common::message::{Message, MessageContent, MessageResponse, OperationStatus}
 use crate::store::{ACLAble, HashMapAble, Store, StoreAble, UserAble};
 
 mod store;
+mod config;
 
 #[derive(Parser, Debug)]
 #[command(name = "in-mem", version = "1.0", about = "A small in mem server")]
@@ -31,39 +35,31 @@ struct Cli {
     #[arg(default_value = "127.0.0.1", env = "HOST", help = "The host to bind to")]
     host: IpAddr,
     /// The port to bind to
-    #[arg(default_value = "3000", env = "PORT", help = "The port to bind to")]
-    port: u16,
+    #[arg(env = "PORT", help = "The port to bind to")]
+    port: Option<u16>,
+    /// The private key location
+    #[arg(env = "PRIVATE_KEY", help = "The location of the private key")]
+    private_key_loc: Option<String>,
 }
 
 async fn handle_message<T>(message: Message, connection: &mut Connection, store: &Arc<Mutex<T>>, encrypted: bool, rsp_id: Uuid) -> Option<Message> where T: StoreAble + ACLAble + UserAble + Send + Sync + HashMapAble<String> {
     return match message.content {
         MessageContent::Command(cmd) => {
             log::trace!("Received command: {:?}", cmd);
-            /*if !store.acl_is_allowed(&connection.id.to_string(), cmd.to_id()) {
-                log::trace!("Command is not allowed for user: {:?}", connection.user.clone().unwrap_or("Not Logged In".to_string()));
-                let rsp = Message::new_response(rsp_id, MessageResponse {
-                    content: None,
-                    status: OperationStatus::NotAllowed,
-                    in_reply_to: Some(message.id),
-                });
-                match to_vec(&rsp) {
-                    Ok(rsp) => {
-                        match connection.write(&*rsp).await {
-                            Ok(_) => {}
-                            Err(err) => {
-                                log::error!("Error writing response: {}", err);
-                                connection.is_closed = true;
-                            }
-                        }
-                    },
-                    Err(err) => {
-                        log::error!("Error serializing response: {}", err);
-                        connection.is_closed = true;
-                    }
+            // Block scope to release the lock as soon as possible
+            {
+                let store = store.lock().await;
+                if !store.acl_is_allowed(&connection.get_id().to_string(), cmd.to_id()) {
+                    log::trace!("Command is not allowed for user: {:?}", connection.get_user().clone().unwrap_or("Not Logged In".to_string()));
+                    let rsp = Message::new_response(rsp_id, MessageResponse {
+                        content: None,
+                        status: OperationStatus::NotAllowed,
+                        in_reply_to: Some(message.id),
+                    });
+                    return Some(rsp);
                 }
-                continue;
             }
-            log::trace!("Command is allowed");*/
+            log::trace!("Command is allowed");
 
             match cmd {
                 Command::Get { key, default } => {
@@ -485,13 +481,97 @@ async fn socket_listener<T>(host: IpAddr, port: u16, brotli_effort: u8, store: A
     }
 }
 
+
+fn config_path(file: &str) -> PathBuf {
+    let path = match ProjectDirs::from("", "", "in-mem") {
+        None => PathBuf::from(format!(".{}{}", MAIN_SEPARATOR, file)),
+        Some(dirs) => {
+            if !dirs.data_dir().exists() {
+                match create_dir_all(dirs.data_dir()) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        eprintln!("{}", e);
+                        std::process::exit(-1);
+                    }
+                }
+            }
+            PathBuf::from(format!(
+                "{}{}{}",
+                dirs.data_dir().to_str().unwrap(),
+                MAIN_SEPARATOR,
+                file
+            ))
+        }
+    };
+
+    path
+}
+
+fn merge_config(config: config::Config, cli: Cli) -> config::Config {
+    let mut config = config;
+    // The CLI Args override the config file
+    // Therefore if port is in the config and different to the CLI port, we override it or if it's just not there
+    if config.port.is_some_and(|x| x != cli.port.unwrap_or(3000)) || config.port.is_none() {
+        config.port = Some(cli.port.unwrap_or(3000));
+    }
+    // Same goes for host
+    if config.host.is_some_and(|x| x != cli.host) || config.host.is_none() {
+        config.host = Some(cli.host);
+    }
+    // Same goes for brotli_effort
+    if config.brotli_quality.is_some_and(|x| x != cli.brotli_effort) || config.brotli_quality.is_none() {
+        config.brotli_quality = Some(cli.brotli_effort);
+    }
+    // And for the private key loc
+    // This is a little more lengthy because Strings cannot be copied like numbers
+    if config.private_key_loc.clone().is_some_and(|x| x != cli.private_key_loc.clone().unwrap_or(String::from("server-identity.age"))) || config.private_key_loc.is_none() {
+        config.private_key_loc = cli.private_key_loc.map_or_else(|| Some(String::from("server-identity.age")), |x| Some(x));
+    }
+    config
+}
+
 #[tokio::main]
 async fn main() {
     init_env_logger();
 
     let cli = Cli::parse();
 
-    let private_key = match std::fs::File::open("server-identity.age") {
+    let config_path = config_path("config.yaml");
+    log::debug!("Using config file: {}", config_path.display());
+    let config_string = std::fs::read_to_string(config_path.clone());
+    let config = match config_string {
+        Ok(config) => {
+            let config = match serde_yaml::from_str(&config) {
+                Ok(config) => config,
+                Err(err) => {
+                    log::error!("Error parsing config file: {}", err);
+                    std::process::exit(-1);
+                }
+            };
+            config
+        }
+        Err(_) => {
+            log::warn!("No config file found or not readable. Using default config");
+            let conf = config::Config::default();
+            // Save the default config
+            let parent = config_path.parent().unwrap();
+            if !parent.exists() {
+                match create_dir_all(parent) {
+                    Ok(_) => {}
+                    Err(err) => {
+                        log::error!("Error creating config directory: {}", err);
+                        std::process::exit(-1);
+                    }
+                }
+            }
+            conf.save(&config_path).unwrap();
+            conf
+        }
+    };
+    let config = merge_config(config, cli);
+    // config.private_key_loc will be some, because it's set in the merging if it's not there
+    log::debug!("Loading private key: {:?}", config.private_key_loc);
+    let private_key = match std::fs::File::open(config.private_key_loc.clone().unwrap()) {
         Ok(mut file) => {
             let mut buf = Vec::new();
             match file.read_to_end(&mut buf) {
@@ -520,7 +600,7 @@ async fn main() {
         Err(_) => {
             log::warn!("No identity file found or not readable. Generating new identity file");
             let key = Identity::generate();
-            match std::fs::write("server-identity.age", key.to_string().expose_secret()) {
+            match std::fs::write(config.private_key_loc.unwrap(), key.to_string().expose_secret()) {
                 Ok(_) => {}
                 Err(err) => {
                     log::error!("Error writing identity file: {}", err);
@@ -533,5 +613,25 @@ async fn main() {
     let public_key = private_key.to_public();
     log::info!("Public key: \"{}\"", public_key);
     let store = Arc::new(Mutex::new(Store::default()));
-    socket_listener(cli.host, cli.port, cli.brotli_effort, store, private_key).await;
+
+    let mut locked = store.lock().await;
+    for user in config.users {
+        locked.user_add(&user.name, &user.password);
+    }
+    for acl in config.acls {
+        for command in acl.commands {
+            let command = str_to_command_id(command);
+            match command {
+                Ok(command) => {
+                    locked.acl_add(&acl.name, command)
+                }
+                Err(err) => {
+                    log::warn!("Error parsing command: {}", err);
+                }
+            }
+        }
+    }
+    drop(locked);
+
+    socket_listener(config.host.unwrap(), config.port.unwrap(), config.brotli_quality.unwrap(), store, private_key).await;
 }

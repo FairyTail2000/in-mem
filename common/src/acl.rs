@@ -19,8 +19,8 @@ impl ACL {
     }
 
     pub fn is_allowed(&self, user: &str, command: CommandID) -> bool {
-        // 16 = KEYEXCHANGE 3 = HEARTBEAT
-        if command == 16 || command == 3 {
+        // 16 = KEYEXCHANGE 5 = LOGIN 3 = HEARTBEAT
+        if command == 16 || command == 5 || command == 3 {
             return true;
         }
 
