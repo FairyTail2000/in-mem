@@ -12,7 +12,7 @@ use clap::Parser;
 use directories::ProjectDirs;
 use sha2::{Digest, Sha512};
 use tokio::net::TcpListener;
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use common::command::{ACLOperation, Command, str_to_command_id};
@@ -42,13 +42,13 @@ struct Cli {
     private_key_loc: Option<String>,
 }
 
-async fn handle_message<T>(message: Message, connection: &mut Connection, store: &Arc<Mutex<T>>, encrypted: bool, rsp_id: Uuid) -> Option<Message> where T: StoreAble + ACLAble + UserAble + Send + Sync + HashMapAble<String> {
+async fn handle_message<T>(message: Message, connection: &mut Connection, store: &Arc<RwLock<T>>, encrypted: bool, rsp_id: Uuid) -> Option<Message> where T: StoreAble + ACLAble + UserAble + Send + Sync + HashMapAble<String> {
     return match message.content {
         MessageContent::Command(cmd) => {
             log::trace!("Received command: {:?}", cmd);
             // Block scope to release the lock as soon as possible
             {
-                let store = store.lock().await;
+                let store = store.read().await;
                 if !store.acl_is_allowed(&connection.get_id().to_string(), cmd.to_id()) {
                     log::trace!("Command is not allowed for user: {:?}", connection.get_user().clone().unwrap_or("Not Logged In".to_string()));
                     let rsp = Message::new_response(rsp_id, MessageResponse {
@@ -63,7 +63,7 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
 
             match cmd {
                 Command::Get { key, default } => {
-                    let store = store.lock().await;
+                    let store = store.read().await;
                     let rsp = match store.get(&key) {
                         None => {
                             Message::new_response(rsp_id, MessageResponse {
@@ -83,7 +83,7 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
                     Some(rsp)
                 }
                 Command::Set { key, value } => {
-                    let mut store = store.lock().await;
+                    let mut store = store.write().await;
                     let rsp = match store.set(key, value) {
                         Ok(_) => {
                             Message::new_response(rsp_id, MessageResponse {
@@ -111,7 +111,7 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
                     Some(rsp)
                 }
                 Command::Delete { key } => {
-                    let mut store = store.lock().await;
+                    let mut store = store.write().await;
                     let rsp = match store.remove(&key) {
                         None => {
                             Message::new_response(rsp_id, MessageResponse {
@@ -133,7 +133,7 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
                 Command::ACL { op } => {
                     match op {
                         ACLOperation::Set { user, command } => {
-                            let mut store = store.lock().await;
+                            let mut store = store.write().await;
                             store.acl_add(&user, command);
                             let rsp = Message::new_response(rsp_id, MessageResponse {
                                 content: None,
@@ -143,7 +143,7 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
                             Some(rsp)
                         }
                         ACLOperation::Remove { user, command } => {
-                            let mut store = store.lock().await;
+                            let mut store = store.write().await;
                             store.acl_remove(&user, command);
                             let rsp = Message::new_response(rsp_id, MessageResponse {
                                 content: None,
@@ -153,7 +153,7 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
                             Some(rsp)
                         }
                         ACLOperation::List { user } => {
-                            let store = store.lock().await;
+                            let store = store.read().await;
                             let commands = store.acl_list(&user);
                             let res = commands.iter().map(|cmd| cmd.to_string()).collect::<Vec<String>>().join(", ").to_string();
                             let rsp = Message::new_response(rsp_id, MessageResponse {
@@ -180,7 +180,7 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
 
                     let result = hasher.finalize();
                     let password = format!("{:x}", result);
-                    let store = store.lock().await;
+                    let store = store.read().await;
 
                     let rsp = if store.user_is_valid(&user, &password) {
                         connection.set_user(user.clone());
@@ -214,7 +214,7 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
                     Some(rsp)
                 }
                 Command::HDEL { key, field } => {
-                    let mut store = store.lock().await;
+                    let mut store = store.write().await;
                     let rsp = match store.hremove(key, field) {
                         true => {
                             Message::new_response(rsp_id, MessageResponse {
@@ -234,7 +234,7 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
                     Some(rsp)
                 }
                 Command::HGET { key, field } => {
-                    let store = store.lock().await;
+                    let store = store.read().await;
                     let rsp = match store.hget(key, field) {
                         None => {
                             Message::new_response(rsp_id, MessageResponse {
@@ -268,7 +268,7 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
                             return Some(rsp);
                         }
                     }
-                    let mut store = store.lock().await;
+                    let mut store = store.write().await;
                     for kv in value.into_iter() {
                         let ok = store.hadd(key.clone(), kv.0, kv.1).is_ok();
                         okay.push(ok);
@@ -290,7 +290,7 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
                     Some(rsp)
                 }
                 Command::HGETALL { key } => {
-                    let store = store.lock().await;
+                    let store = store.read().await;
                     let rsp = match store.hget_all(key) {
                         Ok(map) => {
                             let map = map.into_iter().map(|(k, v)| (k, Bson::String(v))).collect::<Document>();
@@ -311,7 +311,7 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
                     Some(rsp)
                 }
                 Command::HKEYS { key } => {
-                    let store = store.lock().await;
+                    let store = store.read().await;
                     let rsp = match store.hkeys(key) {
                         Ok(keys) => {
                             let keys = keys.into_iter().map(|k| Bson::String(k)).collect::<Vec<Bson>>();
@@ -332,7 +332,7 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
                     Some(rsp)
                 }
                 Command::HLEN { key } => {
-                    let store = store.lock().await;
+                    let store = store.read().await;
                     let rsp = Message::new_response(rsp_id, MessageResponse {
                         content: Some(Bson::Int64(store.hlen(key) as i64)),
                         status: OperationStatus::Success,
@@ -341,7 +341,7 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
                     Some(rsp)
                 }
                 Command::HVALS { key } => {
-                    let store = store.lock().await;
+                    let store = store.read().await;
                     let rsp = match store.hget_all_values(key) {
                         Ok(values) => {
                             let values = values.into_iter().map(|v| Bson::String(v)).collect::<Vec<Bson>>();
@@ -362,7 +362,7 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
                     Some(rsp)
                 }
                 Command::HEXISTS { key, field } => {
-                    let store = store.lock().await;
+                    let store = store.read().await;
                     let rsp = Message::new_response(rsp_id, MessageResponse {
                         content: Some(Bson::Boolean(store.hcontains(key, field))),
                         status: OperationStatus::Success,
@@ -371,7 +371,7 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
                     Some(rsp)
                 }
                 Command::HINCRBY { key, field, value } => {
-                    let mut store = store.lock().await;
+                    let mut store = store.write().await;
                     let rsp = match store.hincrby(key, field, value) {
                         Ok(val) => {
                             Message::new_response(rsp_id, MessageResponse {
@@ -391,7 +391,7 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
                     Some(rsp)
                 }
                 Command::HSTRLEN { key, field } => {
-                    let store = store.lock().await;
+                    let store = store.read().await;
                     let rsp = match store.hstr_len(key, field) {
                         Some(len) => {
                             Message::new_response(rsp_id, MessageResponse {
@@ -445,7 +445,7 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
     };
 }
 
-async fn worker_loop<T>(mut connection: Connection, store: Arc<Mutex<T>>, key: Identity) where T: StoreAble + ACLAble + UserAble + Send + Sync + HashMapAble<String> {
+async fn worker_loop<T>(mut connection: Connection, store: Arc<RwLock<T>>, key: Identity) where T: StoreAble + ACLAble + UserAble + Send + Sync + HashMapAble<String> {
     loop {
         match connection.read_message(&key).await {
             Ok((message, encrypted)) => {
@@ -478,7 +478,7 @@ async fn worker_loop<T>(mut connection: Connection, store: Arc<Mutex<T>>, key: I
     }
 }
 
-async fn socket_listener<T>(host: IpAddr, port: u16, brotli_effort: u8, store: Arc<Mutex<T>>, key: Identity)
+async fn socket_listener<T>(host: IpAddr, port: u16, brotli_effort: u8, store: Arc<RwLock<T>>, key: Identity)
     where T: StoreAble + ACLAble + UserAble + Send + Sync + HashMapAble<String> + Clone + 'static {
     let addr = SocketAddr::from((host, port));
     log::info!("Starting server on tcp://{}", addr);
@@ -638,9 +638,9 @@ async fn main() {
     };
     let public_key = private_key.to_public();
     log::info!("Public key: \"{}\"", public_key);
-    let store = Arc::new(Mutex::new(Store::default()));
+    let store = Arc::new(RwLock::new(Store::default()));
 
-    let mut locked = store.lock().await;
+    let mut locked = store.write().await;
     for user in config.users {
         if user.name.is_empty() {
             log::warn!("User has no name. Skipping");
