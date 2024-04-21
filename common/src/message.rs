@@ -31,8 +31,6 @@ pub enum MessageContent {
 pub struct Message {
     pub id: Uuid,
     pub content: MessageContent,
-    pub fragment: bool,
-    pub last_fragment: bool,
 }
 
 impl Display for Message {
@@ -46,8 +44,6 @@ impl Message {
         Self {
             id,
             content,
-            fragment: false,
-            last_fragment: false,
         }
     }
 
@@ -55,8 +51,6 @@ impl Message {
         Self {
             id,
             content: MessageContent::Command(command),
-            fragment: false,
-            last_fragment: false,
         }
     }
 
@@ -64,8 +58,6 @@ impl Message {
         Self {
             id,
             content: MessageContent::Response(response),
-            fragment: false,
-            last_fragment: false,
         }
     }
 

@@ -1,5 +1,7 @@
 use std::collections::{HashMap, TryReserveError};
 
+use age::x25519::Recipient;
+
 use common::acl::{ACL, CommandID};
 
 pub trait StoreAble {
@@ -16,9 +18,11 @@ pub trait ACLAble {
 }
 
 pub trait UserAble {
-    fn user_add(&mut self, user: &str, password: &str);
+    fn user_add(&mut self, user: &str, password: &str, public_key: Option<Recipient>);
     fn user_remove(&mut self, user: &str);
     fn user_is_valid(&self, user: &str, password: &str) -> bool;
+    fn verify_key(&self, user: &str, key: &Recipient) -> bool;
+    fn user_has_key(&self, user: &str) -> bool;
 }
 
 // Now I understand why redis used h in front of all the hashmap commands. It's to avoid name conflicts.
@@ -41,7 +45,7 @@ pub struct Store {
     map: HashMap<String, String>,
     acl: ACL,
     /// UUID -> hashed password
-    users: HashMap<String, String>,
+    users: HashMap<String, (String, Option<Recipient>)>,
     hash_maps: HashMap<String, HashMap<String, String>>,
 }
 
@@ -95,8 +99,8 @@ impl ACLAble for Store {
 }
 
 impl UserAble for Store {
-    fn user_add(&mut self, user: &str, password: &str) {
-        self.users.insert(user.to_string(), password.to_string());
+    fn user_add(&mut self, user: &str, password: &str, public_key: Option<Recipient>) {
+        self.users.insert(user.to_string(), (password.to_string(), public_key));
     }
 
     fn user_remove(&mut self, user: &str) {
@@ -105,10 +109,26 @@ impl UserAble for Store {
 
     fn user_is_valid(&self, user: &str, password: &str) -> bool {
         match self.users.get(user) {
-            Some(p) => {
+            Some((p, _)) => {
                 p == password
             }
             None => false
+        }
+    }
+
+    fn verify_key(&self, user: &str, key: &Recipient) -> bool {
+        match self.users.get(user) {
+            Some((_, Some(k))) => {
+                k == key
+            }
+            _ => false
+        }
+    }
+
+    fn user_has_key(&self, user: &str) -> bool {
+        match self.users.get(user) {
+            Some((_, Some(_))) => true,
+            _ => false
         }
     }
 }

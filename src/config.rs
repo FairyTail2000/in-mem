@@ -6,33 +6,32 @@ use serde::{Deserialize, Serialize};
 #[derive(Ord, PartialOrd, Eq, PartialEq, Clone, Hash, Debug, Default, Serialize, Deserialize)]
 pub struct ConfigUser {
     pub name: String,
+    /// The password that the user will use to authenticate
+    /// The password is hashed with sha512
+    /// Not hashing it in the config file will result in the user not being loaded
     pub password: String,
-}
-
-#[derive(Ord, PartialOrd, Eq, PartialEq, Clone, Hash, Debug, Default, Serialize, Deserialize)]
-pub struct ConfigAcl {
-    /// The name of the user that this ACL applies to
-    pub name: String,
-    /// The commands that the user is allowed to execute
-    pub commands: Vec<String>,
+    /// The public key of the user
+    /// The public key is used to ensure that the user is who they say they are. So setting this effectively removes MITM attacks
+    pub public_key: Option<String>,
+    /// ACLs that the user has
+    /// A list of commands the user is allowed to execute
+    pub acls: Vec<String>,
 }
 
 #[derive(Ord, PartialOrd, Eq, PartialEq, Clone, Hash, Debug, Default, Serialize, Deserialize)]
 pub struct Config {
     /// The users that are allowed to connect to the server
-    pub users: Vec<ConfigUser>,
-    /// The ACLs for users
     ///
     /// Format
     /// ```yaml
-    /// acls:
-    ///  - name: "user1"
-    ///    commands:
+    /// users:
+    /// - name: "user1"
+    ///   acls:
     ///     - "HGET"
     ///     - "HSET"
     /// ```
     /// It's always allowed to send the KEYEXCHANGE, HEARTBEAT and LOGIN Messages
-    pub acls: Vec<ConfigAcl>,
+    pub users: Vec<ConfigUser>,
     /// The port that the server will listen on
     /// Can be overridden by the CLI
     pub port: Option<u16>,
@@ -51,7 +50,6 @@ impl Config {
     pub fn new() -> Self {
         Self {
             users: vec![],
-            acls: vec![],
             port: None,
             host: None,
             private_key_loc: None,

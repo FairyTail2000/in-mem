@@ -6,7 +6,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use age::secrecy::ExposeSecret;
-use age::x25519::Identity;
+use age::x25519::{Identity, Recipient};
 use bson::{Bson, Document};
 use clap::Parser;
 use directories::ProjectDirs;
@@ -166,13 +166,39 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
                     }
                 }
                 Command::Login { user, password } => {
+                    if !encrypted {
+                        log::error!("Received unencrypted login message for user {} on connection {}", user, connection.get_id());
+                        return None;
+                    }
+                    if connection.get_user().is_some() {
+                        log::error!("User {} is already logged in on connection {}", connection.get_user().clone().unwrap(), connection.get_id());
+                        return None;
+                    }
+
                     let mut hasher = Sha512::new();
                     hasher.update(&password);
+
                     let result = hasher.finalize();
                     let password = format!("{:x}", result);
                     let store = store.lock().await;
+
                     let rsp = if store.user_is_valid(&user, &password) {
                         connection.set_user(user.clone());
+                        if store.user_has_key(&user) {
+                            if !store.verify_key(&user, connection.get_pub_key().as_ref().unwrap()) {
+                                log::error!("User {} has a public key but it's not valid. Therefor login will be denied", user);
+                                return None;
+                            }
+                            let rsp = Message::new_response(rsp_id, MessageResponse {
+                                content: None,
+                                status: OperationStatus::Success,
+                                in_reply_to: Some(message.id),
+                            });
+                            return Some(rsp);
+                        } else {
+                            log::warn!("User {} has no public key. Continuing anyway", user);
+                        }
+
                         Message::new_response(rsp_id, MessageResponse {
                             content: None,
                             status: OperationStatus::Success,
@@ -616,14 +642,43 @@ async fn main() {
 
     let mut locked = store.lock().await;
     for user in config.users {
-        locked.user_add(&user.name, &user.password);
-    }
-    for acl in config.acls {
-        for command in acl.commands {
-            let command = str_to_command_id(command);
+        if user.name.is_empty() {
+            log::warn!("User has no name. Skipping");
+            continue;
+        }
+        if user.password.is_empty() {
+            log::warn!("User {} has no password. Skipping", user.name);
+            continue;
+        }
+        if user.password.len() != 128 {
+            log::warn!("User {} has a password that is not hashed with sha512. Skipping", user.name);
+            continue;
+        }
+        if user.acls.is_empty() {
+            log::warn!("User {} has no acls. Continuing anyway", user.name);
+        }
+        match user.public_key {
+            None => {
+                log::debug!("Adding user without public key: {}", user.name);
+                locked.user_add(&user.name, &user.password, None);
+            }
+            Some(key_str) => {
+                match Recipient::from_str(&key_str) {
+                    Ok(key) => {
+                        log::debug!("Adding user with public key: {}", user.name);
+                        locked.user_add(&user.name, &user.password, Some(key));
+                    }
+                    Err(err) => {
+                        log::warn!("Error parsing public key. Not adding it: {}", err);
+                    }
+                }
+            }
+        }
+        for acl in user.acls {
+            let command = str_to_command_id(acl);
             match command {
                 Ok(command) => {
-                    locked.acl_add(&acl.name, command)
+                    locked.acl_add(&user.name, command)
                 }
                 Err(err) => {
                     log::warn!("Error parsing command: {}", err);
