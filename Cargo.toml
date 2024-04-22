@@ -11,7 +11,7 @@ tokio = { version = "1.37.0", features = ["full"] }
 clap = { version = "4.5.4", features = ["derive", "unicode", "env"] }
 env_logger = "0.11.3"
 log = "0.4.21"
-chrono = "0.4.35"
+chrono = "0.4.38"
 serde = { version = "1.0.198", features = ["derive"] }
 bson = { version = "2.10.0" }
 serde_yaml = "0.9.34+deprecated"
