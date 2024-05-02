@@ -4,6 +4,7 @@ pub mod command;
 pub mod message;
 pub mod acl;
 pub mod connection;
+pub mod command_input;
 
 pub fn init_env_logger() {
     env_logger::Builder::from_env(env_logger::Env::default())

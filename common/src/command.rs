@@ -1,348 +1,105 @@
+use std::fmt::Display;
 use serde::{Deserialize, Serialize};
 
-use crate::acl::CommandID;
-
-#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
-pub enum ACLOperation {
-    Set {
-        user: String,
-        command: CommandID,
-    },
-    Remove {
-        user: String,
-        command: CommandID,
-    },
-    List {
-        user: String,
-    },
+#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Deserialize, Serialize)]
+pub enum CommandID {
+    Get = 0,
+    Set = 1,
+    Delete = 2,
+    Heartbeat = 3,
+    AclList = 4,
+    AclSet = 5,
+    AclRemove = 6,
+    Login = 7,
+    HGET = 8,
+    HSET = 9,
+    HDEL = 10,
+    HGETALL = 11,
+    HKEYS = 12,
+    HVALS = 13,
+    HLEN = 14,
+    HEXISTS = 15,
+    HINCRBY = 16,
+    HSTRLEN = 17,
+    KEYEXCHANGE = 18,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub enum Command {
-    Get {
-        key: String,
-        default: Option<String>,
-    },
-    Set {
-        key: String,
-        value: String,
-    },
-    Delete {
-        key: String,
-    },
-    Heartbeat,
-    ACL {
-        op: ACLOperation
-    },
-    Login {
-        user: String,
-        password: String,
-    },
-    HGET {
-        key: String,
-        field: String,
-    },
-    HSET {
-        key: String,
-        value: std::collections::HashMap<String, String>,
-    },
-    HDEL {
-        key: String,
-        field: String,
-    },
-    HGETALL {
-        key: String,
-    },
-    HKEYS {
-        key: String,
-    },
-    HVALS {
-        key: String,
-    },
-    HLEN {
-        key: String,
-    },
-    HEXISTS {
-        key: String,
-        field: String,
-    },
-    HINCRBY {
-        key: String,
-        field: String,
-        value: i64,
-    },
-    HSTRLEN {
-        key: String,
-        field: String,
-    },
-    KEYEXCHANGE {
-        pub_key: String,
-    },
-}
-
-
-impl TryFrom<Vec<u8>> for Command {
-    type Error = String;
-
-    fn try_from(buf: Vec<u8>) -> Result<Command, Self::Error> {
-        let buf = std::str::from_utf8(&buf).unwrap().replace('\0', "");
-        let mut parts = buf.splitn(3, ' ');
-        let part = parts.next().unwrap().trim();
-        match part {
-            "GET" => {
-                let key = match parts.next() {
-                    Some(key) => key.to_string(),
-                    None => return Err("Key not provided".to_string()),
-                };
-                let default = parts.next().map(|s| s.to_string());
-                Ok(Command::Get { key, default })
-            }
-            "SET" => {
-                let key = match parts.next() {
-                    None => return Err("Key not provided".to_string()),
-                    Some(key) => key.to_string()
-                };
-                let value = match parts.next() {
-                    None => return Err("Value not provided".to_string()),
-                    Some(value) => value.to_string()
-                };
-                Ok(Command::Set { key, value })
-            }
-            "HEARTBEAT" => Ok(Command::Heartbeat),
-            "DELETE" => {
-                let key = match parts.next() {
-                    None => return Err("Key not provided".to_string()),
-                    Some(key) => key.to_string()
-                };
-                Ok(Command::Delete { key })
-            }
-            "ACL" => {
-                let op = match parts.next() {
-                    None => return Err("Operation not provided".to_string()),
-                    Some(op) => op.to_string()
-                };
-                let mut op_parts = op.splitn(3, ' ');
-                let op = match op_parts.next() {
-                    None => return Err("Operation not provided".to_string()),
-                    Some(op) => op
-                };
-                let user = match op_parts.next() {
-                    None => return Err("User not provided".to_string()),
-                    Some(user) => user.to_string()
-                };
-                match op {
-                    "SET" => {
-                        let command = match op_parts.next() {
-                            None => return Err("Command not provided".to_string()),
-                            Some(cmd) => {
-                                match cmd.parse() {
-                                    Ok(cmd) => cmd,
-                                    Err(_) => return Err("Invalid command".to_string())
-                                }
-                            }
-                        };
-                        Ok(Command::ACL { op: ACLOperation::Set { user, command } })
-                    }
-                    "REMOVE" => {
-                        let command = match op_parts.next() {
-                            None => return Err("Command not provided".to_string()),
-                            Some(cmd) => {
-                                match cmd.parse() {
-                                    Ok(cmd) => cmd,
-                                    Err(_) => return Err("Invalid command".to_string())
-                                }
-                            }
-                        };
-                        Ok(Command::ACL { op: ACLOperation::Remove { user, command } })
-                    }
-                    "LIST" => {
-                        Ok(Command::ACL { op: ACLOperation::List { user } })
-                    }
-                    _ => Err(format!("Invalid ACL operation: {}", op)),
-                }
-            }
-            "LOGIN" => {
-                let user = match parts.next() {
-                    None => return Err("User not provided".to_string()),
-                    Some(user) => user.to_string()
-                };
-                let password = match parts.next() {
-                    None => return Err("Password not provided".to_string()),
-                    Some(password) => password.to_string()
-                };
-                Ok(Command::Login { user, password })
-            }
-            "HGET" => {
-                let key = match parts.next() {
-                    None => return Err("Key not provided".to_string()),
-                    Some(key) => key.to_string()
-                };
-                let field = match parts.next() {
-                    None => return Err("Field not provided".to_string()),
-                    Some(field) => field.to_string()
-                };
-                Ok(Command::HGET { key, field })
-            }
-            "HSET" => {
-                let key = match parts.next() {
-                    None => return Err("Key not provided".to_string()),
-                    Some(key) => key.to_string()
-                };
-                let mut value = std::collections::HashMap::new();
-                for part in parts {
-                    let mut kv = part.splitn(2, '=');
-                    let k = match kv.next() {
-                        None => return Err("Invalid key-value pair".to_string()),
-                        Some(k) => k.to_string()
-                    };
-                    let v = match kv.next() {
-                        None => return Err("Invalid key-value pair".to_string()),
-                        Some(v) => v.to_string()
-                    };
-                    value.insert(k, v);
-                }
-                Ok(Command::HSET { key, value })
-            }
-            "HDEL" => {
-                let key = match parts.next() {
-                    None => return Err("Key not provided".to_string()),
-                    Some(key) => key.to_string()
-                };
-                let field = match parts.next() {
-                    None => return Err("Field not provided".to_string()),
-                    Some(field) => field.to_string()
-                };
-                Ok(Command::HDEL { key, field })
-            }
-            "HGETALL" => {
-                let key = match parts.next() {
-                    None => return Err("Key not provided".to_string()),
-                    Some(key) => key.to_string()
-                };
-                Ok(Command::HGETALL { key })
-            }
-            "HKEYS" => {
-                let key = match parts.next() {
-                    None => return Err("Key not provided".to_string()),
-                    Some(key) => key.to_string()
-                };
-                Ok(Command::HKEYS { key })
-            }
-            "HVALS" => {
-                let key = match parts.next() {
-                    None => return Err("Key not provided".to_string()),
-                    Some(key) => key.to_string()
-                };
-                Ok(Command::HVALS { key })
-            }
-            "HLEN" => {
-                let key = match parts.next() {
-                    None => return Err("Key not provided".to_string()),
-                    Some(key) => key.to_string()
-                };
-                Ok(Command::HLEN { key })
-            }
-            "HEXISTS" => {
-                let key = match parts.next() {
-                    None => return Err("Key not provided".to_string()),
-                    Some(key) => key.to_string()
-                };
-                let field = match parts.next() {
-                    None => return Err("Field not provided".to_string()),
-                    Some(field) => field.to_string()
-                };
-                Ok(Command::HEXISTS { key, field })
-            }
-            "HINCRBY" => {
-                let key = match parts.next() {
-                    None => return Err("Key not provided".to_string()),
-                    Some(key) => key.to_string()
-                };
-                let field = match parts.next() {
-                    None => return Err("Field not provided".to_string()),
-                    Some(field) => field.to_string()
-                };
-                let value = match parts.next() {
-                    None => return Err("Value not provided".to_string()),
-                    Some(value) => {
-                        match value.parse() {
-                            Ok(value) => value,
-                            Err(_) => return Err("Invalid value".to_string())
-                        }
-                    }
-                };
-                Ok(Command::HINCRBY { key, field, value })
-            }
-            "HSTRLEN" => {
-                let key = match parts.next() {
-                    None => return Err("Key not provided".to_string()),
-                    Some(key) => key.to_string()
-                };
-                let field = match parts.next() {
-                    None => return Err("Field not provided".to_string()),
-                    Some(field) => field.to_string()
-                };
-                Ok(Command::HSTRLEN { key, field })
-            }
-            _ => Err(format!("Invalid command: {}", part)),
-        }
+impl Display for CommandID {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let str = match self {
+            CommandID::Get => { "GET".to_string() }
+            CommandID::Set => { "SET".to_string() }
+            CommandID::Delete => { "DELETE".to_string() }
+            CommandID::Heartbeat => { "HEARTBEAT".to_string() }
+            CommandID::AclList => { "ACLList".to_string() }
+            CommandID::AclSet => { "ACLSet".to_string() }
+            CommandID::AclRemove => { "ACLRemove".to_string() }
+            CommandID::Login => { "LOGIN".to_string() }
+            CommandID::HGET => { "HGET".to_string() }
+            CommandID::HSET => { "HSET".to_string() }
+            CommandID::HDEL => { "HDEL".to_string() }
+            CommandID::HGETALL => { "HGETALL".to_string() }
+            CommandID::HKEYS => { "HKEYS".to_string() }
+            CommandID::HVALS => { "HVALS".to_string() }
+            CommandID::HLEN => { "HLEN".to_string() }
+            CommandID::HEXISTS => { "HEXISTS".to_string() }
+            CommandID::HINCRBY => { "HINCRBY".to_string() }
+            CommandID::HSTRLEN => { "HSTRLEN".to_string() }
+            CommandID::KEYEXCHANGE => { "KEYEXCHANGE".to_string() }
+        };
+        write!(f, "{}", str)
     }
 }
 
-impl TryFrom<&str> for Command {
-    type Error = String;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        let val = value.as_bytes();
-        let mut buf = Vec::with_capacity(val.len());
-        buf[..val.len()].copy_from_slice(val);
-        return Self::try_from(buf);
-    }
-}
-
-impl Command {
-    pub fn to_id(&self) -> CommandID {
-        match self {
-            Command::Get { .. } => 0,
-            Command::Set { .. } => 1,
-            Command::Delete { .. } => 2,
-            Command::Heartbeat => 3,
-            Command::ACL { .. } => 4,
-            Command::Login { .. } => 5,
-            Command::HGET { .. } => 6,
-            Command::HSET { .. } => 7,
-            Command::HDEL { .. } => 8,
-            Command::HGETALL { .. } => 9,
-            Command::HKEYS { .. } => 10,
-            Command::HVALS { .. } => 11,
-            Command::HLEN { .. } => 12,
-            Command::HEXISTS { .. } => 13,
-            Command::HINCRBY { .. } => 14,
-            Command::HSTRLEN { .. } => 15,
-            Command::KEYEXCHANGE { .. } => 16,
+impl TryFrom<u32> for CommandID {
+    type Error = std::io::Error;
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(CommandID::Get),
+            1 => Ok(CommandID::Set),
+            2 => Ok(CommandID::Delete),
+            3 => Ok(CommandID::Heartbeat),
+            4 => Ok(CommandID::AclList),
+            5 => Ok(CommandID::AclSet),
+            6 => Ok(CommandID::AclRemove),
+            7 => Ok(CommandID::Login),
+            8 => Ok(CommandID::HGET),
+            9 => Ok(CommandID::HSET),
+            10 => Ok(CommandID::HDEL),
+            11 => Ok(CommandID::HGETALL),
+            12 => Ok(CommandID::HKEYS),
+            13 => Ok(CommandID::HVALS),
+            14 => Ok(CommandID::HLEN),
+            15 => Ok(CommandID::HEXISTS),
+            16 => Ok(CommandID::HINCRBY),
+            17 => Ok(CommandID::HSTRLEN),
+            18 => Ok(CommandID::KEYEXCHANGE),
+            _ => Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid command id")),
         }
     }
 }
 
 pub fn str_to_command_id(value: String) -> Result<CommandID, std::io::Error> {
     match &*value {
-        "GET" => Ok(0),
-        "SET" => Ok(1),
-        "DELETE" => Ok(2),
-        "HEARTBEAT" => Ok(3),
-        "ACL" => Ok(4),
-        "LOGIN" => Ok(5),
-        "HGET" => Ok(6),
-        "HSET" => Ok(7),
-        "HDEL" => Ok(8),
-        "HGETALL" => Ok(9),
-        "HKEYS" => Ok(10),
-        "HVALS" => Ok(11),
-        "HLEN" => Ok(12),
-        "HEXISTS" => Ok(13),
-        "HINCRBY" => Ok(14),
-        "HSTRLEN" => Ok(15),
-        "KEYEXCHANGE" => Ok(16),
+        "GET" => Ok(CommandID::Get),
+        "SET" => Ok(CommandID::Set),
+        "DELETE" => Ok(CommandID::Delete),
+        "HEARTBEAT" => Ok(CommandID::Heartbeat),
+        "ACLList" => Ok(CommandID::AclList),
+        "ACLSet" => Ok(CommandID::AclSet),
+        "ACLRemove" => Ok(CommandID::AclRemove),
+        "LOGIN" => Ok(CommandID::Login),
+        "HGET" => Ok(CommandID::HGET),
+        "HSET" => Ok(CommandID::HSET),
+        "HDEL" => Ok(CommandID::HDEL),
+        "HGETALL" => Ok(CommandID::HGETALL),
+        "HKEYS" => Ok(CommandID::HKEYS),
+        "HVALS" => Ok(CommandID::HVALS),
+        "HLEN" => Ok(CommandID::HLEN),
+        "HEXISTS" => Ok(CommandID::HEXISTS),
+        "HINCRBY" => Ok(CommandID::HINCRBY),
+        "HSTRLEN" => Ok(CommandID::HSTRLEN),
+        "KEYEXCHANGE" => Ok(CommandID::KEYEXCHANGE),
         _ => Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid command id"))
     }
 }

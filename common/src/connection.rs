@@ -174,6 +174,7 @@ impl Connection {
         let buf = self.decrypt(&buf, key)?.unwrap();
         let after = buf.len();
         let buf = self.decompress(&buf)?;
+        log::trace!("Decompressed message from {} to {} bytes", before, buf.len());
         return Ok((Message::from_slice(&buf).unwrap(), before != after));
     }
 
@@ -202,6 +203,7 @@ impl Connection {
         self.pub_key = Some(key);
     }
 
+    /// Returns a clone of the public key, if it exists
     pub fn get_pub_key(&self) -> Option<Recipient> {
         self.pub_key.clone()
     }

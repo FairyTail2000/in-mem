@@ -2,7 +2,8 @@ use std::collections::{HashMap, TryReserveError};
 
 use age::x25519::Recipient;
 
-use common::acl::{ACL, CommandID};
+use common::acl::ACL;
+use common::command::CommandID;
 
 pub trait StoreAble {
     fn get(&self, key: &str) -> Option<&String>;
@@ -245,6 +246,7 @@ impl HashMapAble<String> for Store {
         map.try_reserve(1)?;
         let new_value = match map.get(&key) {
             Some(v) => {
+                // FIXME: Checked addition will cause a panic if the result overflows.
                 let new_value = v.parse::<i64>().unwrap() + value;
                 map.insert(key, new_value.to_string());
                 new_value

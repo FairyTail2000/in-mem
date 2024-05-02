@@ -47,16 +47,6 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn new() -> Self {
-        Self {
-            users: vec![],
-            port: None,
-            host: None,
-            private_key_loc: None,
-            brotli_quality: None,
-        }
-    }
-
     pub fn save(&self, path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
         let file = std::fs::File::create(path)?;
         serde_yaml::to_writer(file, self)?;

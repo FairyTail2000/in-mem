@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs::create_dir_all;
 use std::io::prelude::Read;
 use std::net::{IpAddr, SocketAddr};
@@ -7,23 +8,23 @@ use std::sync::Arc;
 
 use age::secrecy::ExposeSecret;
 use age::x25519::{Identity, Recipient};
-use bson::{Bson, Document};
 use clap::Parser;
 use directories::ProjectDirs;
-use sha2::{Digest, Sha512};
 use tokio::net::TcpListener;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use common::command::{ACLOperation, Command, str_to_command_id};
+use common::command::{CommandID, str_to_command_id};
 use common::connection::Connection;
 use common::init_env_logger;
 use common::message::{Message, MessageContent, MessageResponse, OperationStatus};
 
-use crate::store::{ACLAble, HashMapAble, Store, StoreAble, UserAble};
+use crate::commands::{GetCommand, SetCommand, DeleteCommand, HeartbeatCommand, AclListCommand, AclSetCommand, AclRemoveCommand, LoginCommand, KeyExchangeCommand, HashMapGetCommand, HashMapSetCommand, HashMapDeleteCommand, HashMapKeysCommand, HashMapValuesCommand, HashMapLenCommand, HashMapExistsCommand, HashMapGetAllCommand, HashMapIncrByCommand, HashMapStringLenCommand};
+use crate::store::{ACLAble, Store, UserAble};
 
 mod store;
 mod config;
+mod commands;
 
 #[derive(Parser, Debug)]
 #[command(name = "in-mem", version = "1.0", about = "A small in mem server")]
@@ -42,399 +43,40 @@ struct Cli {
     private_key_loc: Option<String>,
 }
 
-async fn handle_message<T>(message: Message, connection: &mut Connection, store: &Arc<RwLock<T>>, encrypted: bool, rsp_id: Uuid) -> Option<Message> where T: StoreAble + ACLAble + UserAble + Send + Sync + HashMapAble<String> {
+async fn handle_message(message: Message, connection: &mut Connection, store: &Arc<RwLock<Store>>, encrypted: bool, rsp_id: Uuid, command_registry: &mut HashMap<CommandID, Box<dyn commands::Command>>) -> Option<Message> {
+    let original_message = message.clone();
     return match message.content {
         MessageContent::Command(cmd) => {
             log::trace!("Received command: {:?}", cmd);
-            // Block scope to release the lock as soon as possible
-            {
-                let store = store.read().await;
-                if !store.acl_is_allowed(&connection.get_id().to_string(), cmd.to_id()) {
-                    log::trace!("Command is not allowed for user: {:?}", connection.get_user().clone().unwrap_or("Not Logged In".to_string()));
-                    let rsp = Message::new_response(rsp_id, MessageResponse {
-                        content: None,
-                        status: OperationStatus::NotAllowed,
-                        in_reply_to: Some(message.id),
-                    });
-                    return Some(rsp);
-                }
-            }
-            log::trace!("Command is allowed");
-
-            match cmd {
-                Command::Get { key, default } => {
-                    let store = store.read().await;
-                    let rsp = match store.get(&key) {
-                        None => {
-                            Message::new_response(rsp_id, MessageResponse {
-                                content: default.map(|x| Bson::String(x.to_string())),
-                                status: OperationStatus::Failure,
-                                in_reply_to: Some(message.id),
-                            })
-                        }
-                        Some(val) => {
-                            Message::new_response(rsp_id, MessageResponse {
-                                content: Some(Bson::String(val.to_string())),
-                                status: OperationStatus::Success,
-                                in_reply_to: Some(message.id),
-                            })
-                        }
-                    };
-                    Some(rsp)
-                }
-                Command::Set { key, value } => {
-                    let mut store = store.write().await;
-                    let rsp = match store.set(key, value) {
-                        Ok(_) => {
-                            Message::new_response(rsp_id, MessageResponse {
-                                content: None,
-                                status: OperationStatus::Success,
-                                in_reply_to: Some(message.id),
-                            })
-                        }
-                        Err(err) => {
-                            Message::new_response(rsp_id, MessageResponse {
-                                content: Some(Bson::String(err.to_string())),
-                                status: OperationStatus::Failure,
-                                in_reply_to: Some(message.id),
-                            })
-                        }
-                    };
-                    Some(rsp)
-                }
-                Command::Heartbeat => {
-                    let rsp = Message::new_response(rsp_id, MessageResponse {
-                        content: None,
-                        status: OperationStatus::Success,
-                        in_reply_to: Some(message.id),
-                    });
-                    Some(rsp)
-                }
-                Command::Delete { key } => {
-                    let mut store = store.write().await;
-                    let rsp = match store.remove(&key) {
-                        None => {
-                            Message::new_response(rsp_id, MessageResponse {
-                                content: None,
-                                status: OperationStatus::NotFound,
-                                in_reply_to: Some(message.id),
-                            })
-                        }
-                        Some(_) => {
-                            Message::new_response(rsp_id, MessageResponse {
-                                content: None,
-                                status: OperationStatus::Success,
-                                in_reply_to: Some(message.id),
-                            })
-                        }
-                    };
-                    Some(rsp)
-                }
-                Command::ACL { op } => {
-                    match op {
-                        ACLOperation::Set { user, command } => {
-                            let mut store = store.write().await;
-                            store.acl_add(&user, command);
-                            let rsp = Message::new_response(rsp_id, MessageResponse {
-                                content: None,
-                                status: OperationStatus::Success,
-                                in_reply_to: Some(message.id),
-                            });
-                            Some(rsp)
-                        }
-                        ACLOperation::Remove { user, command } => {
-                            let mut store = store.write().await;
-                            store.acl_remove(&user, command);
-                            let rsp = Message::new_response(rsp_id, MessageResponse {
-                                content: None,
-                                status: OperationStatus::Success,
-                                in_reply_to: Some(message.id),
-                            });
-                            Some(rsp)
-                        }
-                        ACLOperation::List { user } => {
-                            let store = store.read().await;
-                            let commands = store.acl_list(&user);
-                            let res = commands.iter().map(|cmd| cmd.to_string()).collect::<Vec<String>>().join(", ").to_string();
-                            let rsp = Message::new_response(rsp_id, MessageResponse {
-                                content: Some(Bson::String(res)),
-                                status: OperationStatus::Success,
-                                in_reply_to: Some(message.id),
-                            });
-                            Some(rsp)
-                        }
-                    }
-                }
-                Command::Login { user, password } => {
-                    if !encrypted {
-                        log::error!("Received unencrypted login message for user {} on connection {}", user, connection.get_id());
-                        return None;
-                    }
-                    if connection.get_user().is_some() {
-                        log::error!("User {} is already logged in on connection {}", connection.get_user().clone().unwrap(), connection.get_id());
-                        return None;
-                    }
-
-                    let mut hasher = Sha512::new();
-                    hasher.update(&password);
-
-                    let result = hasher.finalize();
-                    let password = format!("{:x}", result);
-                    let store = store.read().await;
-
-                    let rsp = if store.user_is_valid(&user, &password) {
-                        connection.set_user(user.clone());
-                        if store.user_has_key(&user) {
-                            if !store.verify_key(&user, connection.get_pub_key().as_ref().unwrap()) {
-                                log::error!("User {} has a public key but it's not valid. Therefor login will be denied", user);
-                                return None;
-                            }
-                            let rsp = Message::new_response(rsp_id, MessageResponse {
-                                content: None,
-                                status: OperationStatus::Success,
-                                in_reply_to: Some(message.id),
-                            });
-                            return Some(rsp);
-                        } else {
-                            log::warn!("User {} has no public key. Continuing anyway", user);
-                        }
-
-                        Message::new_response(rsp_id, MessageResponse {
-                            content: None,
-                            status: OperationStatus::Success,
-                            in_reply_to: Some(message.id),
-                        })
-                    } else {
-                        Message::new_response(rsp_id, MessageResponse {
+            let cmd_id: CommandID = cmd.command_id.try_into().unwrap();
+            let rsvp = command_registry.get_mut(&cmd_id);
+            match rsvp {
+                Some(handler) => {
+                    let early_exit = handler.pre_exec(connection, encrypted).await;
+                    if !early_exit {
+                        let rsp = Message::new_response(rsp_id, MessageResponse {
                             content: None,
                             status: OperationStatus::Failure,
                             in_reply_to: Some(message.id),
-                        })
-                    };
-                    Some(rsp)
-                }
-                Command::HDEL { key, field } => {
-                    let mut store = store.write().await;
-                    let rsp = match store.hremove(key, field) {
-                        true => {
-                            Message::new_response(rsp_id, MessageResponse {
-                                content: None,
-                                status: OperationStatus::Success,
-                                in_reply_to: Some(message.id),
-                            })
-                        }
-                        false => {
-                            Message::new_response(rsp_id, MessageResponse {
-                                content: None,
-                                status: OperationStatus::NotFound,
-                                in_reply_to: Some(message.id),
-                            })
-                        }
-                    };
-                    Some(rsp)
-                }
-                Command::HGET { key, field } => {
-                    let store = store.read().await;
-                    let rsp = match store.hget(key, field) {
-                        None => {
-                            Message::new_response(rsp_id, MessageResponse {
-                                content: None,
-                                status: OperationStatus::NotFound,
-                                in_reply_to: Some(message.id),
-                            })
-                        }
-                        Some(val) => {
-                            Message::new_response(rsp_id, MessageResponse {
-                                content: Some(Bson::String(val.clone())),
-                                status: OperationStatus::Success,
-                                in_reply_to: Some(message.id),
-                            })
-                        }
-                    };
-                    Some(rsp)
-                }
-                // Some might fail to insert. But it's not reported which failed ;)
-                Command::HSET { key, value } => {
-                    let mut okay = Vec::new();
-                    match okay.try_reserve_exact(value.len()) {
-                        Ok(_) => {}
-                        Err(err) => {
-                            log::error!("Error reserving space for values: {}", err);
-                            let rsp = Message::new_response(rsp_id, MessageResponse {
-                                content: None,
-                                status: OperationStatus::Failure,
-                                in_reply_to: Some(message.id),
-                            });
-                            return Some(rsp);
-                        }
+                        });
+                        return Some(rsp);
                     }
-                    let mut store = store.write().await;
-                    for kv in value.into_iter() {
-                        let ok = store.hadd(key.clone(), kv.0, kv.1).is_ok();
-                        okay.push(ok);
-                    }
-                    let okay = okay.iter().all(|x| *x);
-                    let rsp = if okay {
-                        Message::new_response(rsp_id, MessageResponse {
-                            content: None,
-                            status: OperationStatus::Success,
-                            in_reply_to: Some(message.id),
-                        })
-                    } else {
-                        Message::new_response(rsp_id, MessageResponse {
-                            content: None,
-                            status: OperationStatus::Failure,
-                            in_reply_to: Some(message.id),
-                        })
-                    };
-                    Some(rsp)
-                }
-                Command::HGETALL { key } => {
-                    let store = store.read().await;
-                    let rsp = match store.hget_all(key) {
-                        Ok(map) => {
-                            let map = map.into_iter().map(|(k, v)| (k, Bson::String(v))).collect::<Document>();
-                            Message::new_response(rsp_id, MessageResponse {
-                                content: Some(Bson::Document(map)),
-                                status: OperationStatus::Success,
-                                in_reply_to: Some(message.id),
-                            })
-                        }
-                        Err(err) => {
-                            Message::new_response(rsp_id, MessageResponse {
-                                content: Some(Bson::String(err.to_string())),
-                                status: OperationStatus::Failure,
-                                in_reply_to: Some(message.id),
-                            })
-                        }
-                    };
-                    Some(rsp)
-                }
-                Command::HKEYS { key } => {
-                    let store = store.read().await;
-                    let rsp = match store.hkeys(key) {
-                        Ok(keys) => {
-                            let keys = keys.into_iter().map(|k| Bson::String(k)).collect::<Vec<Bson>>();
-                            Message::new_response(rsp_id, MessageResponse {
-                                content: Some(Bson::Array(keys)),
-                                status: OperationStatus::Success,
-                                in_reply_to: Some(message.id),
-                            })
-                        }
-                        Err(err) => {
-                            Message::new_response(rsp_id, MessageResponse {
-                                content: Some(Bson::String(err.to_string())),
-                                status: OperationStatus::Failure,
-                                in_reply_to: Some(message.id),
-                            })
-                        }
-                    };
-                    Some(rsp)
-                }
-                Command::HLEN { key } => {
-                    let store = store.read().await;
-                    let rsp = Message::new_response(rsp_id, MessageResponse {
-                        content: Some(Bson::Int64(store.hlen(key) as i64)),
-                        status: OperationStatus::Success,
-                        in_reply_to: Some(message.id),
-                    });
-                    Some(rsp)
-                }
-                Command::HVALS { key } => {
-                    let store = store.read().await;
-                    let rsp = match store.hget_all_values(key) {
-                        Ok(values) => {
-                            let values = values.into_iter().map(|v| Bson::String(v)).collect::<Vec<Bson>>();
-                            Message::new_response(rsp_id, MessageResponse {
-                                content: Some(Bson::Array(values)),
-                                status: OperationStatus::Success,
-                                in_reply_to: Some(message.id),
-                            })
-                        }
-                        Err(err) => {
-                            Message::new_response(rsp_id, MessageResponse {
-                                content: Some(Bson::String(err.to_string())),
-                                status: OperationStatus::Failure,
-                                in_reply_to: Some(message.id),
-                            })
-                        }
-                    };
-                    Some(rsp)
-                }
-                Command::HEXISTS { key, field } => {
-                    let store = store.read().await;
-                    let rsp = Message::new_response(rsp_id, MessageResponse {
-                        content: Some(Bson::Boolean(store.hcontains(key, field))),
-                        status: OperationStatus::Success,
-                        in_reply_to: Some(message.id),
-                    });
-                    Some(rsp)
-                }
-                Command::HINCRBY { key, field, value } => {
-                    let mut store = store.write().await;
-                    let rsp = match store.hincrby(key, field, value) {
-                        Ok(val) => {
-                            Message::new_response(rsp_id, MessageResponse {
-                                content: Some(Bson::Int64(val)),
-                                status: OperationStatus::Success,
-                                in_reply_to: Some(message.id),
-                            })
-                        }
-                        Err(err) => {
-                            Message::new_response(rsp_id, MessageResponse {
-                                content: Some(Bson::String(err.to_string())),
-                                status: OperationStatus::Failure,
-                                in_reply_to: Some(message.id),
-                            })
-                        }
-                    };
-                    Some(rsp)
-                }
-                Command::HSTRLEN { key, field } => {
-                    let store = store.read().await;
-                    let rsp = match store.hstr_len(key, field) {
-                        Some(len) => {
-                            Message::new_response(rsp_id, MessageResponse {
-                                content: Some(Bson::Int64(len as i64)),
-                                status: OperationStatus::Success,
-                                in_reply_to: Some(message.id),
-                            })
+
+                    let result = handler.execute(store.clone(), cmd.payload, &original_message).await;
+                    handler.post_exec(connection, result.as_ref()).await;
+                    match result {
+                        Some(result) => {
+                            Some(Message::new_response(rsp_id, result))
                         }
                         None => {
-                            Message::new_response(rsp_id, MessageResponse {
-                                content: None,
-                                status: OperationStatus::NotFound,
-                                in_reply_to: Some(message.id),
-                            })
+                            log::error!("Error executing command: {:?}", cmd.command_id);
+                            None
                         }
-                    };
-                    Some(rsp)
-                }
-                Command::KEYEXCHANGE { pub_key } => {
-                    if !encrypted {
-                        log::error!("Received unencrypted key exchange message");
-                        return None;
                     }
-                    match age::x25519::Recipient::from_str(&*pub_key) {
-                        Ok(key) => {
-                            connection.set_pub_key(key.clone())
-                        }
-                        Err(err) => {
-                            log::error!("Error parsing public key: {}", err);
-                            let rsp = Message::new_response(rsp_id, MessageResponse {
-                                content: Some(Bson::String(err.to_string())),
-                                status: OperationStatus::Failure,
-                                in_reply_to: Some(message.id),
-                            });
-                            return Some(rsp);
-                        }
-                    };
-                    let rsp = Message::new_response(rsp_id, MessageResponse {
-                        content: None,
-                        status: OperationStatus::Success,
-                        in_reply_to: Some(message.id),
-                    });
-                    Some(rsp)
+                }
+                None => {
+                    log::error!("Received unknown command: {:?}", cmd.command_id);
+                    return None;
                 }
             }
         }
@@ -445,13 +87,14 @@ async fn handle_message<T>(message: Message, connection: &mut Connection, store:
     };
 }
 
-async fn worker_loop<T>(mut connection: Connection, store: Arc<RwLock<T>>, key: Identity) where T: StoreAble + ACLAble + UserAble + Send + Sync + HashMapAble<String> {
+async fn worker_loop(mut connection: Connection, store: Arc<RwLock<Store>>, key: Identity) {
+    let mut command_registry = populate_command_registry();
     loop {
         match connection.read_message(&key).await {
             Ok((message, encrypted)) => {
                 log::trace!("Read from socket: {}", connection.get_id());
                 let rsp_id = Uuid::new_v4();
-                let resp = handle_message(message, &mut connection, &store, encrypted, rsp_id).await;
+                let resp = handle_message(message, &mut connection, &store, encrypted, rsp_id, &mut command_registry).await;
                 match resp {
                     None => {
                         log::trace!("Closing connection: {}, Client behaved badly", connection.get_id());
@@ -478,8 +121,7 @@ async fn worker_loop<T>(mut connection: Connection, store: Arc<RwLock<T>>, key: 
     }
 }
 
-async fn socket_listener<T>(host: IpAddr, port: u16, brotli_effort: u8, store: Arc<RwLock<T>>, key: Identity)
-    where T: StoreAble + ACLAble + UserAble + Send + Sync + HashMapAble<String> + Clone + 'static {
+async fn socket_listener(host: IpAddr, port: u16, brotli_effort: u8, store: Arc<RwLock<Store>>, key: Identity) {
     let addr = SocketAddr::from((host, port));
     log::info!("Starting server on tcp://{}", addr);
     let listener = match TcpListener::bind(&addr).await {
@@ -554,6 +196,31 @@ fn merge_config(config: config::Config, cli: Cli) -> config::Config {
         config.private_key_loc = cli.private_key_loc.map_or_else(|| Some(String::from("server-identity.age")), |x| Some(x));
     }
     config
+}
+
+fn populate_command_registry() -> HashMap<CommandID, Box<dyn commands::Command>> {
+    let mut registry: HashMap<CommandID, Box<dyn commands::Command>> = HashMap::new();
+    registry.insert(CommandID::Get, Box::new(GetCommand {}));
+    registry.insert(CommandID::Set, Box::new(SetCommand {}));
+    registry.insert(CommandID::Delete, Box::new(DeleteCommand {}));
+    registry.insert(CommandID::Heartbeat, Box::new(HeartbeatCommand {}));
+    registry.insert(CommandID::AclList, Box::new(AclListCommand {}));
+    registry.insert(CommandID::AclSet, Box::new(AclSetCommand {}));
+    registry.insert(CommandID::AclRemove, Box::new(AclRemoveCommand {}));
+    registry.insert(CommandID::Login, Box::new(LoginCommand::default()));
+    registry.insert(CommandID::KEYEXCHANGE, Box::new(KeyExchangeCommand::default()));
+    registry.insert(CommandID::HGET, Box::new(HashMapGetCommand {}));
+    registry.insert(CommandID::HSET, Box::new(HashMapSetCommand {}));
+    registry.insert(CommandID::HDEL, Box::new(HashMapDeleteCommand {}));
+    registry.insert(CommandID::HKEYS, Box::new(HashMapKeysCommand {}));
+    registry.insert(CommandID::HVALS, Box::new(HashMapValuesCommand {}));
+    registry.insert(CommandID::HLEN, Box::new(HashMapLenCommand {}));
+    registry.insert(CommandID::HGETALL, Box::new(HashMapGetAllCommand {}));
+    registry.insert(CommandID::HEXISTS, Box::new(HashMapExistsCommand {}));
+    registry.insert(CommandID::HINCRBY, Box::new(HashMapIncrByCommand {}));
+    registry.insert(CommandID::HSTRLEN, Box::new(HashMapStringLenCommand {}));
+
+    return registry;
 }
 
 #[tokio::main]

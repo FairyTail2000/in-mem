@@ -6,10 +6,14 @@ use age::x25519::Identity;
 use clap::Parser;
 use tokio::net::TcpStream;
 use uuid::Uuid;
+use bson;
 
-use common::{command, init_env_logger};
+use common::init_env_logger;
+use common::command::CommandID;
+use common::message::Command;
 use common::connection::Connection;
 use common::message::Message;
+use common::command_input;
 
 #[derive(Parser, Debug)]
 #[command(name = "in-mem-client", version = "1.0", about = "A demo client to connect to the in-mem-server")]
@@ -83,9 +87,18 @@ async fn main() {
     let public_key = private_key.to_public();
     log::info!("Public key: \"{}\"", public_key);
     connection.set_pub_key(server_public_key);
-
-    let heartbeat_message = Message::new_command(Uuid::new_v4(), command::Command::Heartbeat);
-    let kex_msg = Message::new_command(Uuid::new_v4(), command::Command::KEYEXCHANGE { pub_key: public_key.clone().to_string() });
+    let heartbeat_message = {
+        let cmd = Command {
+            command_id: CommandID::Heartbeat,
+            payload: bson::Bson::Null,
+        };
+        Message::new_command(Uuid::new_v4(), cmd)
+    };
+    let kex_msg = {
+        let payload = bson::to_bson(&command_input::KeyExchangeCommandInput { pub_key: public_key.clone().to_string() }).unwrap();
+        let cmd = Command { command_id: CommandID::KEYEXCHANGE, payload };
+        Message::new_command(Uuid::new_v4(), cmd)
+    };
     log::debug!("Sending key exchange message");
     match connection.send_message(&kex_msg).await {
         Ok(_) => {}
@@ -127,7 +140,7 @@ async fn main() {
         if input.is_empty() {
             continue;
         }
-        let cmd = match command::Command::try_from(input) {
+        /*let cmd = match command::Command::try_from(input) {
             Ok(cmd) => cmd,
             Err(err) => {
                 log::error!("Error: {:?}", err);
@@ -149,6 +162,6 @@ async fn main() {
                 continue;
             }
         };
-        log::info!("Response: {}", message);
+        log::info!("Response: {}", message);*/
     }
 }

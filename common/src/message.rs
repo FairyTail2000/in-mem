@@ -3,17 +3,16 @@ use std::fmt::Display;
 use bson;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+use crate::command::CommandID;
 
-use crate::command;
-
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct MessageResponse {
     pub content: Option<bson::Bson>,
     pub status: OperationStatus,
     pub in_reply_to: Option<Uuid>,
 }
 
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum OperationStatus {
     Success,
     Failure,
@@ -21,13 +20,19 @@ pub enum OperationStatus {
     NotAllowed,
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Command {
+    pub command_id: CommandID,
+    pub payload: bson::Bson,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum MessageContent {
-    Command(command::Command),
+    Command(Command),
     Response(MessageResponse),
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Message {
     pub id: Uuid,
     pub content: MessageContent,
@@ -47,7 +52,7 @@ impl Message {
         }
     }
 
-    pub fn new_command(id: Uuid, command: command::Command) -> Self {
+    pub fn new_command(id: Uuid, command: Command) -> Self {
         Self {
             id,
             content: MessageContent::Command(command),

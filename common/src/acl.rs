@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
+use crate::command::CommandID;
 
-pub type CommandID = u16;
 
 #[derive(Debug, Default, Clone)]
 pub struct ACL {
@@ -19,8 +19,7 @@ impl ACL {
     }
 
     pub fn is_allowed(&self, user: &str, command: CommandID) -> bool {
-        // 16 = KEYEXCHANGE 5 = LOGIN 3 = HEARTBEAT
-        if command == 16 || command == 5 || command == 3 {
+        if command == CommandID::KEYEXCHANGE || command == CommandID::Login || command == CommandID::Heartbeat {
             return true;
         }
 
