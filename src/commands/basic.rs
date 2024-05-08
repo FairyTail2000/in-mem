@@ -18,7 +18,7 @@ pub struct GetCommand {}
 impl Command for GetCommand {
     async fn pre_exec(&mut self, _connection: &Connection, _encrypted: bool) -> bool { true }
 
-    async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, message: &Message) -> Option<MessageResponse> {
+    async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
         let store = store.read().await;
         let args: GetCommandInput = match args.as_document() {
             None => {
@@ -39,14 +39,12 @@ impl Command for GetCommand {
                 MessageResponse {
                     content: args.default.map(|x| Bson::String(x.to_string())),
                     status: OperationStatus::Failure,
-                    in_reply_to: Some(message.id),
                 }
             }
             Some(val) => {
                 MessageResponse {
                     content: Some(Bson::String(val.to_string())),
                     status: OperationStatus::Success,
-                    in_reply_to: Some(message.id),
                 }
             }
         };
@@ -62,7 +60,7 @@ pub struct SetCommand {}
 impl Command for SetCommand {
     async fn pre_exec(&mut self, _connection: &Connection, _encrypted: bool) -> bool { true }
 
-    async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, message: &Message) -> Option<MessageResponse> {
+    async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
         let mut store = store.write().await;
         let args: SetCommandInput = match args.as_document() {
             None => {
@@ -83,14 +81,12 @@ impl Command for SetCommand {
                 MessageResponse {
                     content: None,
                     status: OperationStatus::Success,
-                    in_reply_to: Some(message.id),
                 }
             }
             Err(err) => {
                 MessageResponse {
                     content: Some(Bson::String(err.to_string())),
                     status: OperationStatus::Failure,
-                    in_reply_to: Some(message.id),
                 }
             }
         };
@@ -106,7 +102,7 @@ pub struct DeleteCommand {}
 impl Command for DeleteCommand {
     async fn pre_exec(&mut self, _connection: &Connection, _encrypted: bool) -> bool { true }
 
-    async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, message: &Message) -> Option<MessageResponse> {
+    async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
         let mut store = store.write().await;
         let args: DeleteCommandInput = match args.as_document() {
             None => {
@@ -127,14 +123,12 @@ impl Command for DeleteCommand {
                 MessageResponse {
                     content: Some(Bson::String(val.to_string())),
                     status: OperationStatus::Success,
-                    in_reply_to: Some(message.id),
                 }
             }
             None => {
                 MessageResponse {
                     content: None,
                     status: OperationStatus::NotFound,
-                    in_reply_to: Some(message.id),
                 }
             }
         };

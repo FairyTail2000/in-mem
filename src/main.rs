@@ -19,7 +19,7 @@ use common::connection::Connection;
 use common::init_env_logger;
 use common::message::{Message, MessageContent, MessageResponse, OperationStatus};
 
-use crate::commands::{GetCommand, SetCommand, DeleteCommand, HeartbeatCommand, AclListCommand, AclSetCommand, AclRemoveCommand, LoginCommand, KeyExchangeCommand, HashMapGetCommand, HashMapSetCommand, HashMapDeleteCommand, HashMapKeysCommand, HashMapValuesCommand, HashMapLenCommand, HashMapExistsCommand, HashMapGetAllCommand, HashMapIncrByCommand, HashMapStringLenCommand};
+use crate::commands::{GetCommand, SetCommand, DeleteCommand, HeartbeatCommand, AclListCommand, AclSetCommand, AclRemoveCommand, LoginCommand, KeyExchangeCommand, HashMapGetCommand, HashMapSetCommand, HashMapDeleteCommand, HashMapKeysCommand, HashMapValuesCommand, HashMapLenCommand, HashMapExistsCommand, HashMapGetAllCommand, HashMapIncrByCommand, HashMapStringLenCommand, HashMapUpsertCommand};
 use crate::store::{ACLAble, Store, UserAble};
 
 mod store;
@@ -49,6 +49,22 @@ async fn handle_message(message: Message, connection: &mut Connection, store: &A
         MessageContent::Command(cmd) => {
             log::trace!("Received command: {:?}", cmd);
             let cmd_id: CommandID = cmd.command_id.try_into().unwrap();
+            // Check if the command is allowed
+            {
+                let store = store.read().await;
+                if store.acl_is_allowed(&connection.get_user().unwrap_or_else(|| "".to_string()), cmd_id) {
+                    log::trace!("Command allowed: {:?}", cmd_id);
+                } else {
+                    log::error!("Command not allowed: {:?}", cmd_id);
+                    let rsp = Message::new_response(rsp_id, MessageResponse {
+                        content: None,
+                        status: OperationStatus::NotAllowed,
+                    });
+                    return Some(rsp);
+                }
+            }
+
+
             let rsvp = command_registry.get_mut(&cmd_id);
             match rsvp {
                 Some(handler) => {
@@ -57,7 +73,6 @@ async fn handle_message(message: Message, connection: &mut Connection, store: &A
                         let rsp = Message::new_response(rsp_id, MessageResponse {
                             content: None,
                             status: OperationStatus::Failure,
-                            in_reply_to: Some(message.id),
                         });
                         return Some(rsp);
                     }
@@ -219,6 +234,8 @@ fn populate_command_registry() -> HashMap<CommandID, Box<dyn commands::Command>>
     registry.insert(CommandID::HEXISTS, Box::new(HashMapExistsCommand {}));
     registry.insert(CommandID::HINCRBY, Box::new(HashMapIncrByCommand {}));
     registry.insert(CommandID::HSTRLEN, Box::new(HashMapStringLenCommand {}));
+    registry.insert(CommandID::HUPSERT, Box::new(HashMapUpsertCommand {}));
+    registry.insert(CommandID::UserRemove, Box::new(commands::UserRemoveCommand {}));
 
     return registry;
 }

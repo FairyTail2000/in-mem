@@ -9,7 +9,6 @@ use crate::command::CommandID;
 pub struct MessageResponse {
     pub content: Option<bson::Bson>,
     pub status: OperationStatus,
-    pub in_reply_to: Option<Uuid>,
 }
 
 #[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]

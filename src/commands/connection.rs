@@ -29,7 +29,7 @@ impl Command for LoginCommand {
         true
     }
 
-    async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, message: &Message) -> Option<MessageResponse> {
+    async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
         let store = store.read().await;
         let args: LoginCommandInput = match args.as_document() {
             None => {
@@ -71,7 +71,6 @@ impl Command for LoginCommand {
                 return Some(MessageResponse {
                     content: None,
                     status: OperationStatus::Success,
-                    in_reply_to: Some(message.id),
                 });
             } else {
                 log::warn!("User {} has no public key. Continuing anyway", args.user);
@@ -80,13 +79,11 @@ impl Command for LoginCommand {
             MessageResponse {
                 content: None,
                 status: OperationStatus::Success,
-                in_reply_to: Some(message.id),
             }
         } else {
             MessageResponse {
                 content: None,
                 status: OperationStatus::Failure,
-                in_reply_to: Some(message.id),
             }
         };
         Some(rsp)
@@ -116,7 +113,7 @@ impl Command for KeyExchangeCommand {
         true
     }
 
-    async fn execute(&mut self, _: Arc<RwLock<Store>>, args: Bson, message: &Message) -> Option<MessageResponse> {
+    async fn execute(&mut self, _: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
         let args: KeyExchangeCommandInput = match args.as_document() {
             None => {
                 return None;
@@ -144,7 +141,6 @@ impl Command for KeyExchangeCommand {
                 let rsp = MessageResponse {
                     content: Some(Bson::String(err.to_string())),
                     status: OperationStatus::Failure,
-                    in_reply_to: Some(message.id),
                 };
                 return Some(rsp);
             }
@@ -152,7 +148,6 @@ impl Command for KeyExchangeCommand {
         let rsp = MessageResponse {
             content: None,
             status: OperationStatus::Success,
-            in_reply_to: Some(message.id),
         };
         Some(rsp)
     }

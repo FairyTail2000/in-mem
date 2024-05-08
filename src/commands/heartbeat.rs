@@ -16,11 +16,10 @@ pub struct HeartbeatCommand {}
 impl Command for HeartbeatCommand {
     async fn pre_exec(&mut self, _connection: &Connection, _encrypted: bool) -> bool { true }
 
-    async fn execute(&mut self, _: Arc<RwLock<Store>>, _: Bson, message: &Message) -> Option<MessageResponse> {
+    async fn execute(&mut self, _: Arc<RwLock<Store>>, _: Bson, _message: &Message) -> Option<MessageResponse> {
         Some(MessageResponse {
             content: None,
             status: OperationStatus::Success,
-            in_reply_to: Some(message.id),
         })
     }
 

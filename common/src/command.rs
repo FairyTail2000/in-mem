@@ -22,6 +22,8 @@ pub enum CommandID {
     HINCRBY = 16,
     HSTRLEN = 17,
     KEYEXCHANGE = 18,
+    HUPSERT = 19,
+    UserRemove = 20,
 }
 
 impl Display for CommandID {
@@ -46,6 +48,8 @@ impl Display for CommandID {
             CommandID::HINCRBY => { "HINCRBY".to_string() }
             CommandID::HSTRLEN => { "HSTRLEN".to_string() }
             CommandID::KEYEXCHANGE => { "KEYEXCHANGE".to_string() }
+            CommandID::HUPSERT => { "HUPSERT".to_string() }
+            CommandID::UserRemove => { "UserRemove".to_string() }
         };
         write!(f, "{}", str)
     }
@@ -74,6 +78,8 @@ impl TryFrom<u32> for CommandID {
             16 => Ok(CommandID::HINCRBY),
             17 => Ok(CommandID::HSTRLEN),
             18 => Ok(CommandID::KEYEXCHANGE),
+            19 => Ok(CommandID::HUPSERT),
+            20 => Ok(CommandID::UserRemove),
             _ => Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid command id")),
         }
     }
@@ -100,6 +106,8 @@ pub fn str_to_command_id(value: String) -> Result<CommandID, std::io::Error> {
         "HINCRBY" => Ok(CommandID::HINCRBY),
         "HSTRLEN" => Ok(CommandID::HSTRLEN),
         "KEYEXCHANGE" => Ok(CommandID::KEYEXCHANGE),
+        "HUPSERT" => Ok(CommandID::HUPSERT),
+        "UserRemove" => Ok(CommandID::UserRemove),
         _ => Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid command id"))
     }
 }

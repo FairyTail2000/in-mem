@@ -15,7 +15,7 @@ pub struct AclSetCommand {}
 impl Command for AclSetCommand {
     async fn pre_exec(&mut self, _connection: &Connection, _encrypted: bool) -> bool { true }
 
-    async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, message: &Message) -> Option<MessageResponse> {
+    async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
         let mut store = store.write().await;
         let args: AclSetCommandInput = match args.as_document() {
             None => {
@@ -35,7 +35,6 @@ impl Command for AclSetCommand {
         let rsp = MessageResponse {
             content: None,
             status: OperationStatus::Success,
-            in_reply_to: Some(message.id),
         };
         Some(rsp)
     }
@@ -49,7 +48,7 @@ pub struct AclRemoveCommand {}
 impl Command for AclRemoveCommand {
     async fn pre_exec(&mut self, _connection: &Connection, _encrypted: bool) -> bool { true }
 
-    async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, message: &Message) -> Option<MessageResponse> {
+    async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
         let mut store = store.write().await;
         let args: AclRemoveCommandInput = match args.as_document() {
             None => {
@@ -69,7 +68,6 @@ impl Command for AclRemoveCommand {
         let rsp = MessageResponse {
             content: None,
             status: OperationStatus::Success,
-            in_reply_to: Some(message.id),
         };
         Some(rsp)
     }
@@ -83,7 +81,7 @@ pub struct AclListCommand {}
 impl Command for AclListCommand {
     async fn pre_exec(&mut self, _connection: &Connection, _encrypted: bool) -> bool { true }
 
-    async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, message: &Message) -> Option<MessageResponse> {
+    async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
         let args: AclListCommandInput = match args.as_document() {
             None => {
                 return None;
@@ -104,7 +102,6 @@ impl Command for AclListCommand {
         let rsp = MessageResponse {
             content: Some(Bson::String(res)),
             status: OperationStatus::Success,
-            in_reply_to: Some(message.id),
         };
         Some(rsp)
     }

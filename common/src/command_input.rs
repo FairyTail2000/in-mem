@@ -101,7 +101,19 @@ pub struct HashMapStringLenCommandInput {
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub struct HashMapUpsertCommandInput {
+    pub key: String,
+    pub field: String,
+    pub value: String,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct GetCommandInput {
     pub key: String,
     pub default: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub struct UserRemoveCommandInput {
+    pub user: String,
 }

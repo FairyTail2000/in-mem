@@ -18,23 +18,26 @@ pub use acl::{AclRemoveCommand};
 pub use connection::{LoginCommand};
 pub use connection::{KeyExchangeCommand};
 
-pub use hashmap::{HashMapGetCommand};
-pub use hashmap::{HashMapGetAllCommand};
-pub use hashmap::{HashMapSetCommand};
-pub use hashmap::{HashMapDeleteCommand};
-pub use hashmap::{HashMapKeysCommand};
-pub use hashmap::{HashMapValuesCommand};
-pub use hashmap::{HashMapLenCommand};
-pub use hashmap::{HashMapExistsCommand};
-pub use hashmap::{HashMapIncrByCommand};
-pub use hashmap::{HashMapStringLenCommand};
+pub use hashmap::HashMapGetCommand;
+pub use hashmap::HashMapGetAllCommand;
+pub use hashmap::HashMapSetCommand;
+pub use hashmap::HashMapDeleteCommand;
+pub use hashmap::HashMapKeysCommand;
+pub use hashmap::HashMapValuesCommand;
+pub use hashmap::HashMapLenCommand;
+pub use hashmap::HashMapExistsCommand;
+pub use hashmap::HashMapIncrByCommand;
+pub use hashmap::HashMapStringLenCommand;
+pub use hashmap::HashMapUpsertCommand;
 
+pub use user::UserRemoveCommand;
 
 mod basic;
 mod hashmap;
 mod heartbeat;
 mod acl;
 mod connection;
+mod user;
 
 #[async_trait]
 pub trait Command: Send {

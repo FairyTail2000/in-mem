@@ -2,7 +2,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use bson::{Bson, Document};
 use tokio::sync::RwLock;
-use common::command_input::{HashMapDeleteCommandInput, HashMapExistsCommandInput, HashMapGetAllCommandInput, HashMapGetCommandInput, HashMapIncrByCommandInput, HashMapKeysCommandInput, HashMapLenCommandInput, HashMapSetCommandInput, HashMapStringLenCommandInput, HashMapValuesCommandInput};
+use common::command_input::{HashMapDeleteCommandInput, HashMapExistsCommandInput, HashMapGetAllCommandInput, HashMapGetCommandInput, HashMapIncrByCommandInput, HashMapKeysCommandInput, HashMapLenCommandInput, HashMapSetCommandInput, HashMapStringLenCommandInput, HashMapUpsertCommandInput, HashMapValuesCommandInput};
 use common::connection::Connection;
 use common::message::{Message, MessageResponse, OperationStatus};
 use crate::commands::Command;
@@ -14,7 +14,7 @@ pub struct HashMapDeleteCommand {}
 impl Command for HashMapDeleteCommand {
     async fn pre_exec(&mut self, _connection: &Connection, _encrypted: bool) -> bool { true }
 
-    async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, message: &Message) -> Option<MessageResponse> {
+    async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
         let args: HashMapDeleteCommandInput = match args.as_document() {
             None => {
                 return None;
@@ -35,14 +35,12 @@ impl Command for HashMapDeleteCommand {
                 MessageResponse {
                     content: None,
                     status: OperationStatus::Success,
-                    in_reply_to: Some(message.id),
                 }
             }
             false => {
                 MessageResponse {
                     content: None,
                     status: OperationStatus::NotFound,
-                    in_reply_to: Some(message.id),
                 }
             }
         };
@@ -58,7 +56,7 @@ pub struct HashMapGetCommand {}
 impl Command for HashMapGetCommand {
     async fn pre_exec(&mut self, _connection: &Connection, _encrypted: bool) -> bool { true }
 
-    async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, message: &Message) -> Option<MessageResponse> {
+    async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
         let args: HashMapGetCommandInput = match args.as_document() {
             None => {
                 return None;
@@ -79,14 +77,12 @@ impl Command for HashMapGetCommand {
                 MessageResponse {
                     content: None,
                     status: OperationStatus::NotFound,
-                    in_reply_to: Some(message.id),
                 }
             }
             Some(val) => {
                 MessageResponse {
                     content: Some(Bson::String(val.clone())),
                     status: OperationStatus::Success,
-                    in_reply_to: Some(message.id),
                 }
             }
         };
@@ -103,7 +99,7 @@ impl Command for HashMapSetCommand {
     async fn pre_exec(&mut self, _connection: &Connection, _encrypted: bool) -> bool { true }
 
     // Some might fail to insert. But it's not reported which failed ;)
-    async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, message: &Message) -> Option<MessageResponse> {
+    async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
         let args: HashMapSetCommandInput = match args.as_document() {
             None => {
                 return None;
@@ -127,7 +123,6 @@ impl Command for HashMapSetCommand {
                 let rsp = MessageResponse {
                     content: None,
                     status: OperationStatus::Failure,
-                    in_reply_to: Some(message.id),
                 };
                 return Some(rsp);
             }
@@ -141,13 +136,11 @@ impl Command for HashMapSetCommand {
             MessageResponse {
                 content: None,
                 status: OperationStatus::Success,
-                in_reply_to: Some(message.id),
             }
         } else {
             MessageResponse {
                 content: None,
                 status: OperationStatus::Failure,
-                in_reply_to: Some(message.id),
             }
         };
         Some(rsp)
@@ -162,7 +155,7 @@ pub struct HashMapGetAllCommand {}
 impl Command for HashMapGetAllCommand {
     async fn pre_exec(&mut self, _: &Connection, _: bool) -> bool { true }
 
-    async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, message: &Message) -> Option<MessageResponse> {
+    async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
         let args: HashMapGetAllCommandInput = match args.as_document() {
             None => {
                 return None;
@@ -184,14 +177,12 @@ impl Command for HashMapGetAllCommand {
                 MessageResponse {
                     content: Some(Bson::Document(map)),
                     status: OperationStatus::Success,
-                    in_reply_to: Some(message.id),
                 }
             }
             Err(err) => {
                 MessageResponse {
                     content: Some(Bson::String(err.to_string())),
                     status: OperationStatus::Failure,
-                    in_reply_to: Some(message.id),
                 }
             }
         };
@@ -207,7 +198,7 @@ pub struct HashMapKeysCommand {}
 impl Command for HashMapKeysCommand {
     async fn pre_exec(&mut self, _connection: &Connection, _encrypted: bool) -> bool { true }
 
-    async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, message: &Message) -> Option<MessageResponse> {
+    async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
         let args: HashMapKeysCommandInput = match args.as_document() {
             None => {
                 return None;
@@ -229,14 +220,12 @@ impl Command for HashMapKeysCommand {
                 MessageResponse {
                     content: Some(Bson::Array(keys)),
                     status: OperationStatus::Success,
-                    in_reply_to: Some(message.id),
                 }
             }
             Err(err) => {
                 MessageResponse {
                     content: Some(Bson::String(err.to_string())),
                     status: OperationStatus::Failure,
-                    in_reply_to: Some(message.id),
                 }
             }
         };
@@ -252,7 +241,7 @@ pub struct HashMapLenCommand {}
 impl Command for HashMapLenCommand {
     async fn pre_exec(&mut self, _connection: &Connection, _encrypted: bool) -> bool { true }
 
-    async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, message: &Message) -> Option<MessageResponse> {
+    async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
         let args: HashMapLenCommandInput = match args.as_document() {
             None => {
                 return None;
@@ -271,7 +260,6 @@ impl Command for HashMapLenCommand {
         let rsp = MessageResponse {
             content: Some(Bson::Int64(store.hlen(args.key) as i64)),
             status: OperationStatus::Success,
-            in_reply_to: Some(message.id),
         };
         Some(rsp)
     }
@@ -285,7 +273,7 @@ pub struct HashMapValuesCommand {}
 impl Command for HashMapValuesCommand {
     async fn pre_exec(&mut self, _connection: &Connection, _encrypted: bool) -> bool { true }
 
-    async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, message: &Message) -> Option<MessageResponse> {
+    async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
         let args: HashMapValuesCommandInput = match args.as_document() {
             None => {
                 return None;
@@ -307,14 +295,12 @@ impl Command for HashMapValuesCommand {
                 MessageResponse {
                     content: Some(Bson::Array(values)),
                     status: OperationStatus::Success,
-                    in_reply_to: Some(message.id),
                 }
             }
             Err(err) => {
                 MessageResponse {
                     content: Some(Bson::String(err.to_string())),
                     status: OperationStatus::Failure,
-                    in_reply_to: Some(message.id),
                 }
             }
         };
@@ -330,7 +316,7 @@ pub struct HashMapExistsCommand {}
 impl Command for HashMapExistsCommand {
     async fn pre_exec(&mut self, _connection: &Connection, _encrypted: bool) -> bool { true }
 
-    async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, message: &Message) -> Option<MessageResponse> {
+    async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
         let args: HashMapExistsCommandInput = match args.as_document() {
             None => {
                 return None;
@@ -349,7 +335,6 @@ impl Command for HashMapExistsCommand {
         let rsp = MessageResponse {
             content: Some(Bson::Boolean(store.hcontains(args.key, args.field))),
             status: OperationStatus::Success,
-            in_reply_to: Some(message.id),
         };
         Some(rsp)
     }
@@ -363,7 +348,7 @@ pub struct HashMapIncrByCommand {}
 impl Command for HashMapIncrByCommand {
     async fn pre_exec(&mut self, _connection: &Connection, _encrypted: bool) -> bool { true }
 
-    async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, message: &Message) -> Option<MessageResponse> {
+    async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
         let args: HashMapIncrByCommandInput = match args.as_document() {
             None => {
                 return None;
@@ -384,14 +369,12 @@ impl Command for HashMapIncrByCommand {
                 MessageResponse {
                     content: Some(Bson::Int64(val)),
                     status: OperationStatus::Success,
-                    in_reply_to: Some(message.id),
                 }
             }
             Err(err) => {
                 MessageResponse {
                     content: Some(Bson::String(err.to_string())),
                     status: OperationStatus::Failure,
-                    in_reply_to: Some(message.id),
                 }
             }
         };
@@ -407,7 +390,7 @@ pub struct HashMapStringLenCommand {}
 impl Command for HashMapStringLenCommand {
     async fn pre_exec(&mut self, _connection: &Connection, _encrypted: bool) -> bool { true }
 
-    async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, message: &Message) -> Option<MessageResponse> {
+    async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
         let args: HashMapStringLenCommandInput = match args.as_document() {
             None => {
                 return None;
@@ -428,14 +411,55 @@ impl Command for HashMapStringLenCommand {
                 MessageResponse {
                     content: Some(Bson::Int64(len as i64)),
                     status: OperationStatus::Success,
-                    in_reply_to: Some(message.id),
                 }
             }
             None => {
                 MessageResponse {
                     content: None,
                     status: OperationStatus::NotFound,
-                    in_reply_to: Some(message.id),
+                }
+            }
+        };
+        Some(rsp)
+    }
+
+    async fn post_exec(&mut self, _connection: &mut Connection, _response: Option<&MessageResponse>) {}
+}
+
+pub struct HashMapUpsertCommand {}
+
+#[async_trait]
+impl Command for HashMapUpsertCommand {
+    async fn pre_exec(&mut self, _connection: &Connection, _encrypted: bool) -> bool { true }
+
+    async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
+        let args: HashMapUpsertCommandInput = match args.as_document() {
+            None => {
+                return None;
+            }
+            Some(doc) => {
+                match bson::from_bson(Bson::Document(doc.clone())) {
+                    Ok(val) => val,
+                    Err(_) => {
+                        return None;
+                    }
+                }
+            }
+        };
+
+        let mut store = store.write().await;
+        let rsp = match store.hupsert(args.key, args.field, args.value) {
+            Ok(_) => {
+                MessageResponse {
+                    content: None,
+                    status: OperationStatus::Success,
+                }
+            }
+            Err(err) => {
+                log::error!("Error upserting: {}", err);
+                MessageResponse {
+                    content: None,
+                    status: OperationStatus::Failure,
                 }
             }
         };

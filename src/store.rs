@@ -20,7 +20,8 @@ pub trait ACLAble {
 
 pub trait UserAble {
     fn user_add(&mut self, user: &str, password: &str, public_key: Option<Recipient>);
-    fn user_remove(&mut self, user: &str);
+    /// Removes a user from the store. Returns true if the user was removed. Which means it was found in the store
+    fn user_remove(&mut self, user: &str) -> bool;
     fn user_is_valid(&self, user: &str, password: &str) -> bool;
     fn verify_key(&self, user: &str, key: &Recipient) -> bool;
     fn user_has_key(&self, user: &str) -> bool;
@@ -104,8 +105,8 @@ impl UserAble for Store {
         self.users.insert(user.to_string(), (password.to_string(), public_key));
     }
 
-    fn user_remove(&mut self, user: &str) {
-        self.users.remove(user);
+    fn user_remove(&mut self, user: &str) -> bool {
+        self.users.remove(user).is_some()
     }
 
     fn user_is_valid(&self, user: &str, password: &str) -> bool {
