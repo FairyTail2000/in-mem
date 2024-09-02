@@ -20,7 +20,7 @@ common = { path = "common" }
 sha2 = "0.10.8"
 age = { version = "0.10.0" }
 directories = "5.0.1"
-async-trait = "0.1.81"
+async-trait = "0.1.82"
 
 [profile.release]
 lto = true
