@@ -15,7 +15,7 @@ serde = { version = "1.0.204", features = ["derive"] }
 uuid = "1.10.0"
 common = { path = "../common" }
 age = { version = "0.10.0" }
-bson = "2.11.0"
+bson = "2.12.0"
 
 [target.x86_64-unknown-linux-musl]
 linker = "rust-lld"
