@@ -30,7 +30,9 @@ mod commands;
 #[command(name = "in-mem", version = "1.0", about = "A small in mem server")]
 struct Cli {
     /// Name of the person to greet
-    #[arg(short, long, default_value = "6", env = "BROTLI_EFFORT", help = "Brotli compression effort level, 0-11", value_parser = clap::value_parser ! (u8).range(0..12))]
+    #[arg(
+        short, long, default_value = "6", env = "BROTLI_EFFORT", help = "Brotli compression effort level, 0-11", value_parser = clap::value_parser ! (u8).range(0..12)
+    )]
     brotli_effort: u8,
     /// The host to bind to
     #[arg(default_value = "127.0.0.1", env = "HOST", help = "The host to bind to")]
@@ -45,7 +47,7 @@ struct Cli {
 
 async fn handle_message(message: Message, connection: &mut Connection, store: &Arc<RwLock<Store>>, encrypted: bool, rsp_id: Uuid, command_registry: &mut HashMap<CommandID, Box<dyn commands::Command>>) -> Option<Message> {
     let original_message = message.clone();
-    return match message.content {
+    match message.content {
         MessageContent::Command(cmd) => {
             log::trace!("Received command: {:?}", cmd);
             let cmd_id: CommandID = cmd.command_id.try_into().unwrap();
@@ -91,7 +93,7 @@ async fn handle_message(message: Message, connection: &mut Connection, store: &A
                 }
                 None => {
                     log::error!("Received unknown command: {:?}", cmd.command_id);
-                    return None;
+                    None
                 }
             }
         }
@@ -99,7 +101,7 @@ async fn handle_message(message: Message, connection: &mut Connection, store: &A
             log::error!("Received unexpected response from client: {}", connection.get_id());
             None
         }
-    };
+    }
 }
 
 async fn worker_loop(mut connection: Connection, store: Arc<RwLock<Store>>, key: Identity) {
@@ -236,8 +238,10 @@ fn populate_command_registry() -> HashMap<CommandID, Box<dyn commands::Command>>
     registry.insert(CommandID::HSTRLEN, Box::new(HashMapStringLenCommand {}));
     registry.insert(CommandID::HUPSERT, Box::new(HashMapUpsertCommand {}));
     registry.insert(CommandID::UserRemove, Box::new(commands::UserRemoveCommand {}));
+    registry.insert(CommandID::ClientID, Box::new(commands::ClientIDCommand::default()));
+    registry.insert(CommandID::Shutdown, Box::new(commands::ShutdownCommand {}));
 
-    return registry;
+    registry
 }
 
 #[tokio::main]

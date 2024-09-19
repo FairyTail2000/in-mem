@@ -32,12 +32,19 @@ pub use hashmap::HashMapUpsertCommand;
 
 pub use user::UserRemoveCommand;
 
+pub use client::ClientIDCommand;
+
+pub use system::ShutdownCommand;
+
 mod basic;
 mod hashmap;
 mod heartbeat;
 mod acl;
 mod connection;
 mod user;
+mod client;
+mod system;
+mod list;
 
 #[async_trait]
 pub trait Command: Send {

@@ -17,18 +17,9 @@ impl Command for AclSetCommand {
 
     async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
         let mut store = store.write().await;
-        let args: AclSetCommandInput = match args.as_document() {
-            None => {
-                return None;
-            }
-            Some(doc) => {
-                match bson::from_bson(Bson::Document(doc.clone())) {
-                    Ok(val) => val,
-                    Err(_) => {
-                        return None;
-                    }
-                }
-            }
+        let args: AclSetCommandInput = match args.try_into() {
+            Err(_) => { return None; }
+            Ok(doc) => doc
         };
 
         store.acl_add(&args.user, args.command);
@@ -50,18 +41,9 @@ impl Command for AclRemoveCommand {
 
     async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
         let mut store = store.write().await;
-        let args: AclRemoveCommandInput = match args.as_document() {
-            None => {
-                return None;
-            }
-            Some(doc) => {
-                match bson::from_bson(Bson::Document(doc.clone())) {
-                    Ok(val) => val,
-                    Err(_) => {
-                        return None;
-                    }
-                }
-            }
+        let args: AclRemoveCommandInput = match args.try_into() {
+            Err(_) => { return None; }
+            Ok(doc) => doc
         };
 
         store.acl_remove(&args.user, args.command);
@@ -82,18 +64,9 @@ impl Command for AclListCommand {
     async fn pre_exec(&mut self, _connection: &Connection, _encrypted: bool) -> bool { true }
 
     async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
-        let args: AclListCommandInput = match args.as_document() {
-            None => {
-                return None;
-            }
-            Some(doc) => {
-                match bson::from_bson(Bson::Document(doc.clone())) {
-                    Ok(val) => val,
-                    Err(_) => {
-                        return None;
-                    }
-                }
-            }
+        let args: AclListCommandInput = match args.try_into() {
+            Err(_) => { return None; }
+            Ok(doc) => doc
         };
 
         let store = store.read().await;

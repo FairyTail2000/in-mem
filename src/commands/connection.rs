@@ -31,18 +31,9 @@ impl Command for LoginCommand {
 
     async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
         let store = store.read().await;
-        let args: LoginCommandInput = match args.as_document() {
-            None => {
-                return None;
-            }
-            Some(doc) => {
-                match bson::from_bson(Bson::Document(doc.clone())) {
-                    Ok(val) => val,
-                    Err(_) => {
-                        return None;
-                    }
-                }
-            }
+        let args: LoginCommandInput = match args.try_into() {
+            Err(_) => { return None; }
+            Ok(doc) => doc
         };
 
         if !self.encrypted {
@@ -114,18 +105,9 @@ impl Command for KeyExchangeCommand {
     }
 
     async fn execute(&mut self, _: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
-        let args: KeyExchangeCommandInput = match args.as_document() {
-            None => {
-                return None;
-            }
-            Some(doc) => {
-                match bson::from_bson(Bson::Document(doc.clone())) {
-                    Ok(val) => val,
-                    Err(_) => {
-                        return None;
-                    }
-                }
-            }
+        let args: KeyExchangeCommandInput = match args.try_into() {
+            Err(_) => { return None; }
+            Ok(doc) => doc
         };
 
         if !self.encrypted {

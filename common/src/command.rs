@@ -24,6 +24,8 @@ pub enum CommandID {
     KEYEXCHANGE = 18,
     HUPSERT = 19,
     UserRemove = 20,
+    ClientID = 21,
+    Shutdown = 22,
 }
 
 impl Display for CommandID {
@@ -50,6 +52,8 @@ impl Display for CommandID {
             CommandID::KEYEXCHANGE => { "KEYEXCHANGE".to_string() }
             CommandID::HUPSERT => { "HUPSERT".to_string() }
             CommandID::UserRemove => { "UserRemove".to_string() }
+            CommandID::ClientID => { "ClientID".to_string() }
+            CommandID::Shutdown => { "Shutdown".to_string() }
         };
         write!(f, "{}", str)
     }
@@ -80,6 +84,8 @@ impl TryFrom<u32> for CommandID {
             18 => Ok(CommandID::KEYEXCHANGE),
             19 => Ok(CommandID::HUPSERT),
             20 => Ok(CommandID::UserRemove),
+            21 => Ok(CommandID::ClientID),
+            22 => Ok(CommandID::Shutdown),
             _ => Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid command id")),
         }
     }
@@ -108,6 +114,8 @@ pub fn str_to_command_id(value: String) -> Result<CommandID, std::io::Error> {
         "KEYEXCHANGE" => Ok(CommandID::KEYEXCHANGE),
         "HUPSERT" => Ok(CommandID::HUPSERT),
         "UserRemove" => Ok(CommandID::UserRemove),
+        "ClientID" => Ok(CommandID::ClientID),
+        "Shutdown" => Ok(CommandID::Shutdown),
         _ => Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid command id"))
     }
 }

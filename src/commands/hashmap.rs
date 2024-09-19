@@ -15,18 +15,9 @@ impl Command for HashMapDeleteCommand {
     async fn pre_exec(&mut self, _connection: &Connection, _encrypted: bool) -> bool { true }
 
     async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
-        let args: HashMapDeleteCommandInput = match args.as_document() {
-            None => {
-                return None;
-            }
-            Some(doc) => {
-                match bson::from_bson(Bson::Document(doc.clone())) {
-                    Ok(val) => val,
-                    Err(_) => {
-                        return None;
-                    }
-                }
-            }
+        let args: HashMapDeleteCommandInput = match args.try_into() {
+            Err(_) => { return None; }
+            Ok(doc) => doc
         };
 
         let mut store = store.write().await;
@@ -57,18 +48,9 @@ impl Command for HashMapGetCommand {
     async fn pre_exec(&mut self, _connection: &Connection, _encrypted: bool) -> bool { true }
 
     async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
-        let args: HashMapGetCommandInput = match args.as_document() {
-            None => {
-                return None;
-            }
-            Some(doc) => {
-                match bson::from_bson(Bson::Document(doc.clone())) {
-                    Ok(val) => val,
-                    Err(_) => {
-                        return None;
-                    }
-                }
-            }
+        let args: HashMapGetCommandInput = match args.try_into() {
+            Err(_) => { return None; }
+            Ok(doc) => doc
         };
 
         let store = store.read().await;
@@ -100,18 +82,9 @@ impl Command for HashMapSetCommand {
 
     // Some might fail to insert. But it's not reported which failed ;)
     async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
-        let args: HashMapSetCommandInput = match args.as_document() {
-            None => {
-                return None;
-            }
-            Some(doc) => {
-                match bson::from_bson(Bson::Document(doc.clone())) {
-                    Ok(val) => val,
-                    Err(_) => {
-                        return None;
-                    }
-                }
-            }
+        let args: HashMapSetCommandInput = match args.try_into() {
+            Err(_) => { return None; }
+            Ok(doc) => doc
         };
 
         let mut store = store.write().await;
@@ -156,18 +129,9 @@ impl Command for HashMapGetAllCommand {
     async fn pre_exec(&mut self, _: &Connection, _: bool) -> bool { true }
 
     async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
-        let args: HashMapGetAllCommandInput = match args.as_document() {
-            None => {
-                return None;
-            }
-            Some(doc) => {
-                match bson::from_bson(Bson::Document(doc.clone())) {
-                    Ok(val) => val,
-                    Err(_) => {
-                        return None;
-                    }
-                }
-            }
+        let args: HashMapGetAllCommandInput = match args.try_into() {
+            Err(_) => { return None; }
+            Ok(doc) => doc
         };
 
         let store = store.read().await;
@@ -199,18 +163,9 @@ impl Command for HashMapKeysCommand {
     async fn pre_exec(&mut self, _connection: &Connection, _encrypted: bool) -> bool { true }
 
     async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
-        let args: HashMapKeysCommandInput = match args.as_document() {
-            None => {
-                return None;
-            }
-            Some(doc) => {
-                match bson::from_bson(Bson::Document(doc.clone())) {
-                    Ok(val) => val,
-                    Err(_) => {
-                        return None;
-                    }
-                }
-            }
+        let args: HashMapKeysCommandInput = match args.try_into() {
+            Err(_) => { return None; }
+            Ok(doc) => doc
         };
 
         let store = store.read().await;
@@ -242,18 +197,9 @@ impl Command for HashMapLenCommand {
     async fn pre_exec(&mut self, _connection: &Connection, _encrypted: bool) -> bool { true }
 
     async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
-        let args: HashMapLenCommandInput = match args.as_document() {
-            None => {
-                return None;
-            }
-            Some(doc) => {
-                match bson::from_bson(Bson::Document(doc.clone())) {
-                    Ok(val) => val,
-                    Err(_) => {
-                        return None;
-                    }
-                }
-            }
+        let args: HashMapLenCommandInput = match args.try_into() {
+            Err(_) => { return None; }
+            Ok(doc) => doc
         };
 
         let store = store.read().await;
@@ -274,18 +220,9 @@ impl Command for HashMapValuesCommand {
     async fn pre_exec(&mut self, _connection: &Connection, _encrypted: bool) -> bool { true }
 
     async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
-        let args: HashMapValuesCommandInput = match args.as_document() {
-            None => {
-                return None;
-            }
-            Some(doc) => {
-                match bson::from_bson(Bson::Document(doc.clone())) {
-                    Ok(val) => val,
-                    Err(_) => {
-                        return None;
-                    }
-                }
-            }
+        let args: HashMapValuesCommandInput = match args.try_into() {
+            Err(_) => { return None; }
+            Ok(doc) => doc
         };
 
         let store = store.read().await;
@@ -317,18 +254,9 @@ impl Command for HashMapExistsCommand {
     async fn pre_exec(&mut self, _connection: &Connection, _encrypted: bool) -> bool { true }
 
     async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
-        let args: HashMapExistsCommandInput = match args.as_document() {
-            None => {
-                return None;
-            }
-            Some(doc) => {
-                match bson::from_bson(Bson::Document(doc.clone())) {
-                    Ok(val) => val,
-                    Err(_) => {
-                        return None;
-                    }
-                }
-            }
+        let args: HashMapExistsCommandInput = match args.try_into() {
+            Err(_) => { return None; }
+            Ok(doc) => doc
         };
 
         let store = store.read().await;
@@ -349,18 +277,9 @@ impl Command for HashMapIncrByCommand {
     async fn pre_exec(&mut self, _connection: &Connection, _encrypted: bool) -> bool { true }
 
     async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
-        let args: HashMapIncrByCommandInput = match args.as_document() {
-            None => {
-                return None;
-            }
-            Some(doc) => {
-                match bson::from_bson(Bson::Document(doc.clone())) {
-                    Ok(val) => val,
-                    Err(_) => {
-                        return None;
-                    }
-                }
-            }
+        let args: HashMapIncrByCommandInput = match args.try_into() {
+            Err(_) => { return None; }
+            Ok(doc) => doc
         };
 
         let mut store = store.write().await;
@@ -391,18 +310,9 @@ impl Command for HashMapStringLenCommand {
     async fn pre_exec(&mut self, _connection: &Connection, _encrypted: bool) -> bool { true }
 
     async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
-        let args: HashMapStringLenCommandInput = match args.as_document() {
-            None => {
-                return None;
-            }
-            Some(doc) => {
-                match bson::from_bson(Bson::Document(doc.clone())) {
-                    Ok(val) => val,
-                    Err(_) => {
-                        return None;
-                    }
-                }
-            }
+        let args: HashMapStringLenCommandInput = match args.try_into() {
+            Err(_) => { return None; }
+            Ok(doc) => doc
         };
 
         let store = store.read().await;
@@ -433,18 +343,9 @@ impl Command for HashMapUpsertCommand {
     async fn pre_exec(&mut self, _connection: &Connection, _encrypted: bool) -> bool { true }
 
     async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
-        let args: HashMapUpsertCommandInput = match args.as_document() {
-            None => {
-                return None;
-            }
-            Some(doc) => {
-                match bson::from_bson(Bson::Document(doc.clone())) {
-                    Ok(val) => val,
-                    Err(_) => {
-                        return None;
-                    }
-                }
-            }
+        let args: HashMapUpsertCommandInput = match args.try_into() {
+            Err(_) => { return None; }
+            Ok(doc) => doc
         };
 
         let mut store = store.write().await;

@@ -20,18 +20,9 @@ impl Command for GetCommand {
 
     async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
         let store = store.read().await;
-        let args: GetCommandInput = match args.as_document() {
-            None => {
-                return None;
-            }
-            Some(doc) => {
-                match bson::from_bson(Bson::Document(doc.clone())) {
-                    Ok(val) => val,
-                    Err(_) => {
-                        return None;
-                    }
-                }
-            }
+        let args: GetCommandInput = match args.try_into() {
+            Err(_) => { return None; }
+            Ok(doc) => doc
         };
 
         let rsp = match store.get(&args.key) {
@@ -62,18 +53,9 @@ impl Command for SetCommand {
 
     async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
         let mut store = store.write().await;
-        let args: SetCommandInput = match args.as_document() {
-            None => {
-                return None;
-            }
-            Some(doc) => {
-                match bson::from_bson(Bson::Document(doc.clone())) {
-                    Ok(val) => val,
-                    Err(_) => {
-                        return None;
-                    }
-                }
-            }
+        let args: SetCommandInput = match args.try_into() {
+            Err(_) => { return None; }
+            Ok(doc) => doc
         };
 
         let rsp = match store.set(args.key, args.value) {
@@ -104,18 +86,9 @@ impl Command for DeleteCommand {
 
     async fn execute(&mut self, store: Arc<RwLock<Store>>, args: Bson, _message: &Message) -> Option<MessageResponse> {
         let mut store = store.write().await;
-        let args: DeleteCommandInput = match args.as_document() {
-            None => {
-                return None;
-            }
-            Some(doc) => {
-                match bson::from_bson(Bson::Document(doc.clone())) {
-                    Ok(val) => val,
-                    Err(_) => {
-                        return None;
-                    }
-                }
-            }
+        let args: DeleteCommandInput = match args.try_into() {
+            Err(_) => { return None; }
+            Ok(doc) => doc
         };
 
         let rsp = match store.remove(&args.key) {
