@@ -1,5 +1,5 @@
 use std::collections::{HashMap, TryReserveError};
-
+use std::num::ParseIntError;
 use age::x25519::Recipient;
 
 use common::acl::ACL;
@@ -13,6 +13,22 @@ enum Type {
     User((String, Option<Recipient>)),
 }
 
+pub enum ErrorType {
+    TryReserveError(TryReserveError),
+    ParseIntError(ParseIntError),
+}
+
+impl From<TryReserveError> for ErrorType {
+    fn from(value: TryReserveError) -> Self {
+        Self::TryReserveError(value)
+    }
+}
+
+impl From<ParseIntError> for ErrorType {
+    fn from(value: ParseIntError) -> Self {
+        Self::ParseIntError(value)
+    }
+}
 
 pub trait StoreAble {
     fn get(&self, key: &str) -> Option<&String>;
@@ -48,7 +64,7 @@ pub trait HashMapAble<T> {
     fn hlen(&self, map_key: String) -> usize;
     fn hupsert(&mut self, map_key: String, key: String, value: T) -> Result<(), TryReserveError>;
     fn hstr_len(&self, map_key: String, key: String) -> Option<usize>;
-    fn hincrby(&mut self, map_key: String, key: String, value: i64) -> Result<i64, TryReserveError>;
+    fn hincrby(&mut self, map_key: String, key: String, value: i64) -> Result<i64, ErrorType>;
 }
 
 
@@ -314,14 +330,13 @@ impl HashMapAble<String> for Store {
         }
     }
 
-    fn hincrby(&mut self, map_key: String, key: String, value: i64) -> Result<i64, TryReserveError> {
+    fn hincrby(&mut self, map_key: String, key: String, value: i64) -> Result<i64, ErrorType> {
         self.values.try_reserve(1)?;
         if let Type::HashMap(ref mut map) = self.values.entry(map_key).or_insert(Type::HashMap(HashMap::new())) {
             map.try_reserve(1)?;
             let new_value = match map.get(&key) {
                 Some(v) => {
-                    // FIXME: Checked addition will cause a panic if the result overflows.
-                    let new_value = v.parse::<i64>().unwrap() + value;
+                    let new_value = v.parse::<i64>()?.checked_add(value).unwrap_or(0);
                     map.insert(key, new_value.to_string());
                     new_value
                 }

@@ -18,6 +18,8 @@ pub enum OperationStatus {
     NotFound,
     NotAllowed,
     OutOfMemory,
+    /// Happens when you try to access a string as a number
+    TypeError,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

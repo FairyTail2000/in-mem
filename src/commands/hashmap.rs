@@ -6,7 +6,7 @@ use common::command_input::{HashMapDeleteCommandInput, HashMapExistsCommandInput
 use common::connection::Connection;
 use common::message::{Message, MessageResponse, OperationStatus};
 use crate::commands::Command;
-use crate::store::{HashMapAble, Store};
+use crate::store::{ErrorType, HashMapAble, Store};
 
 pub struct HashMapDeleteCommand {}
 
@@ -291,9 +291,19 @@ impl Command for HashMapIncrByCommand {
                 }
             }
             Err(err) => {
-                MessageResponse {
-                    content: Some(Bson::String(err.to_string())),
-                    status: OperationStatus::Failure,
+                match err {
+                    ErrorType::TryReserveError(err) => {
+                        MessageResponse {
+                            content: Some(Bson::String(err.to_string())),
+                            status: OperationStatus::Failure,
+                        }
+                    }
+                    ErrorType::ParseIntError(_) => {
+                        MessageResponse {
+                            content: Some(Bson::String(String::from("Key does not contain a number"))),
+                            status: OperationStatus::TypeError,
+                        }
+                    }
                 }
             }
         };
