@@ -11,7 +11,7 @@ clap = { version = "4.5.20", features = ["derive", "unicode", "env"] }
 env_logger = "0.11.5"
 log = "0.4.22"
 chrono = "0.4.38"
-serde = { version = "1.0.214", features = ["derive"] }
+serde = { version = "1.0.215", features = ["derive"] }
 uuid = "1.11.0"
 common = { path = "../common" }
 age = { version = "0.10.0" }
