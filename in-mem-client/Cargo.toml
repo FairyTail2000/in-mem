@@ -14,7 +14,7 @@ chrono = "0.4.38"
 serde = { version = "1.0.215", features = ["derive"] }
 uuid = "1.11.0"
 common = { path = "../common" }
-age = { version = "0.10.0" }
+age = { version = "0.11.0" }
 bson = "2.13.0"
 
 [target.x86_64-unknown-linux-musl]
