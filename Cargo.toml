@@ -18,7 +18,7 @@ serde_yaml = "0.9.34"
 uuid = "1.11.0"
 common = { path = "common" }
 sha2 = "0.10.8"
-age = { version = "0.10.0" }
+age = { version = "0.11.1" }
 directories = "5.0.1"
 async-trait = "0.1.83"
 
