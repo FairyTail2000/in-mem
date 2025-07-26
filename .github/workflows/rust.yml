@@ -19,7 +19,7 @@ jobs:
       - name: install rust-musl
         run: rustup target add x86_64-unknown-linux-musl
       - name: Cache Vendor
-        uses: actions/cache@v4.0.2
+        uses: actions/cache@v4
         id: cache-vendor
         with:
           # A list of files, directories, and wildcard patterns to cache and restore
@@ -34,7 +34,7 @@ jobs:
         if: steps.cache-vendor.outputs.cache-hit != 'true'
         run: (mkdir .cargo || true) && cargo vendor --locked > .cargo/config
       - name: Cache Target
-        uses: actions/cache@v4.0.2
+        uses: actions/cache@v4
         with:
           # A list of files, directories, and wildcard patterns to cache and restore
           path: target
